@@ -1,0 +1,20 @@
+# Visual Studio and VS Code
+.vs/
+.vscode/
+
+# .NET build output
+**/bin/
+**/obj/
+
+# User-specific files
+*.user
+*.suo
+*.userprefs
+
+# Local connection settings and secrets
+postgres-connection.json
+appsettings.Local.json
+
+# Test and tooling output
+TestResults/
+*.log

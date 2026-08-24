@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\SpatialEditor.Domain\SpatialEditor.Domain.csproj" />
+    <ProjectReference Include="..\SpatialEditor.Geometry\SpatialEditor.Geometry.csproj" />
+    <ProjectReference Include="..\SpatialEditor.Infrastructure\SpatialEditor.Infrastructure.csproj" />
+    <ProjectReference Include="..\SpatialEditor.Cad\SpatialEditor.Cad.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+</Project>
