@@ -5,7 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SpatialEditor.App"
         mc:Ignorable="d"
-        Title="Spatial Editor" Height="600" Width="1000" Background="#F4F6F8">
+        Title="Spatial Editor" Height="600" Width="1000" Background="#F4F6F8"
+        PreviewKeyDown="Window_PreviewKeyDown">
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#1F2933" Padding="14">
             <StackPanel Orientation="Horizontal">
@@ -14,24 +15,48 @@
             </StackPanel>
         </Border>
         <Border DockPanel.Dock="Top" Background="White" BorderBrush="#D7DEE5" BorderThickness="0,0,0,1" Padding="8">
-            <StackPanel Orientation="Horizontal">
-                <Button Content="Zoom in" Padding="14,5" Margin="0,0,6,0" Click="ZoomIn_Click" />
-                <Button Content="Zoom out" Padding="14,5" Margin="0,0,6,0" Click="ZoomOut_Click" />
-                <Button Content="Fit" Padding="14,5" Margin="0,0,6,0" Click="FitView_Click" />
-                <Button Content="Reset view" Padding="14,5" Click="ResetView_Click" />
-                <TextBlock Text="Scroll: zoom  |  Middle drag: pan  |  Click: select" Foreground="#52606D" VerticalAlignment="Center" Margin="18,0,0,0" />
-            </StackPanel>
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Zoom in" Padding="10,5" Margin="0,0,4,0" Click="ZoomIn_Click" ToolTip="Zoom in" />
+                    <Button Content="Zoom out" Padding="10,5" Margin="0,0,4,0" Click="ZoomOut_Click" ToolTip="Zoom out" />
+                    <Button Content="Fit" Padding="10,5" Margin="0,0,4,0" Click="FitView_Click" ToolTip="Fit to imported data" />
+                    <Button Content="Reset" Padding="10,5" Margin="0,0,4,0" Click="ResetView_Click" ToolTip="Reset view" />
+
+                    <Border Width="1" Background="#D7DEE5" Margin="6,2" />
+
+                    <Button x:Name="ImportButton" Content="Import" Padding="10,5" Margin="0,0,4,0" Click="ImportDxf_Click" IsEnabled="False" ToolTip="Import SmartLayout.dxf" />
+                    <CheckBox x:Name="SingleLayerImportCheckBox" Content="Equip only" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Import only the Equipment INSERTs (126) as block objects" />
+                    <Button x:Name="CancelImportButton" Content="Cancel" Padding="10,5" Margin="0,0,4,0" Click="CancelImport_Click" IsEnabled="False" ToolTip="Cancel import" />
+                    <Button x:Name="DeleteImportButton" Content="Del DXF" Padding="10,5" Margin="0,0,4,0" Click="DeleteImportedDxf_Click" IsEnabled="False" ToolTip="Delete imported DXF data" />
+                    <Button Content="Add Pt" Padding="10,5" Margin="0,0,4,0" Click="AddPoint_Click" ToolTip="Add point" />
+                    <Button Content="Validate" Padding="10,5" Margin="0,0,4,0" Click="Validate_Click" ToolTip="Validate geometry" />
+
+                    <Border Width="1" Background="#D7DEE5" Margin="6,2" />
+
+                    <Button x:Name="EditModeButton" Content="Edit" Padding="10,5" Margin="0,0,4,0" Click="ToggleEditMode_Click" IsEnabled="False" ToolTip="Enter/exit edit mode (all layers)" />
+                    <Button x:Name="DuplicateButton" Content="Dup" Padding="10,5" Margin="0,0,4,0" Click="DuplicateSelected_Click" IsEnabled="False" ToolTip="Duplicate selected object" />
+                    <Button x:Name="DeleteObjectButton" Content="Del Obj" Padding="10,5" Margin="0,0,4,0" Click="DeleteSelected_Click" IsEnabled="False" ToolTip="Delete selected object" />
+                    <Button x:Name="GroupButton" Content="Group" Padding="10,5" Margin="0,0,4,0" Click="GroupSelected_Click" IsEnabled="False" ToolTip="Group the selected objects into one block (select several with Ctrl+click or a selection box)" />
+                    <Button x:Name="VertexEditButton" Content="Vtx: Off" Padding="10,5" Margin="0,0,4,0" Click="ToggleVertexEdit_Click" IsEnabled="False" ToolTip="Toggle vertex edit" />
+                    <CheckBox x:Name="SnapToGridCheckBox" Content="Snap 10mm" VerticalAlignment="Center" Margin="4,0,8,0"
+                              Checked="SnapToGridCheckBox_Changed" Unchecked="SnapToGridCheckBox_Changed"
+                              ToolTip="Snap moved/duplicated objects to a 10mm grid" />
+                    <Button x:Name="SaveEditsButton" Content="Save" Padding="10,5" Margin="0,0,4,0" Click="SaveEdits_Click" IsEnabled="False" ToolTip="Save changes" />
+                    <Button x:Name="DiscardEditsButton" Content="Discard" Padding="10,5" Margin="0,0,10,0" Click="DiscardEdits_Click" IsEnabled="False" ToolTip="Discard changes" />
+
+                    <TextBlock Text="Scroll: zoom  |  Middle drag: pan  |  Click: select" Foreground="#52606D" VerticalAlignment="Center" Margin="8,0,0,0" />
+                </StackPanel>
+            </ScrollViewer>
         </Border>
         <Grid Margin="18">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="12" />
-                <ColumnDefinition Width="240" />
+                <ColumnDefinition Width="220" MinWidth="160" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition Width="6" />
+                <ColumnDefinition Width="240" MinWidth="180" />
             </Grid.ColumnDefinitions>
             <Border Grid.Column="0" Background="White" BorderBrush="#D7DEE5" BorderThickness="1" Padding="14">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
                     <TextBlock Text="PostgreSQL connection" FontSize="16" FontWeight="SemiBold" />
                     <TextBlock Text="Host" Margin="0,14,0,3" />
@@ -48,17 +73,14 @@
                     <Button Content="Test PostgreSQL connection" Margin="0,8,0,0" Click="TestConnection_Click" />
                     <Separator Margin="0,18" />
                     <TextBlock Text="Layers" FontSize="16" FontWeight="SemiBold" />
-                    <CheckBox Content="Sample polygon" IsChecked="True" Margin="0,18,0,0" />
-                    <CheckBox Content="Vertices" IsChecked="True" Margin="0,10,0,0" />
+                    <StackPanel x:Name="LayersPanel" Margin="0,12,0,0" />
                     <Separator Margin="0,20" />
-                    <TextBlock Text="Geometry tools" FontWeight="SemiBold" />
-                    <Button x:Name="ImportButton" Content="Import SmartLayout.dxf" Margin="0,12,0,0" Click="ImportDxf_Click" IsEnabled="False" />
-                    <Button Content="Add point" Margin="0,12,0,0" Click="AddPoint_Click" />
-                    <Button Content="Validate geometry" Margin="0,8,0,0" Click="Validate_Click" />
-                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#52606D" TextWrapping="Wrap" Margin="0,20,0,0" />
+                    <TextBlock x:Name="EditStatusText" Foreground="#52606D" TextWrapping="Wrap" />
+                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#52606D" TextWrapping="Wrap" Margin="0,10,0,0" />
                 </StackPanel>
-                </ScrollViewer>
             </Border>
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="#D7DEE5" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />
             <Border Grid.Column="2" Background="White" BorderBrush="#D7DEE5" BorderThickness="1">
                 <Canvas x:Name="MapCanvas" ClipToBounds="True" Background="#FAFBFC"
                         MouseWheel="MapCanvas_MouseWheel"
@@ -66,15 +88,38 @@
                         MouseMove="MapCanvas_MouseMove"
                         MouseUp="MapCanvas_MouseUp">
                     <Canvas x:Name="MapLayerCanvas" />
+                    <Canvas x:Name="EditableObjectsCanvas" />
                 </Canvas>
             </Border>
-            <Border Grid.Column="4" Background="White" BorderBrush="#D7DEE5" BorderThickness="1" Padding="14">
-                <StackPanel>
-                    <TextBlock Text="Object properties" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock x:Name="SelectedObjectText" Text="No object selected" Foreground="#52606D" TextWrapping="Wrap" Margin="0,18,0,0" />
-                    <Separator Margin="0,18" />
-                    <TextBlock x:Name="PropertyDetailsText" Foreground="#263238" TextWrapping="Wrap" />
+            <Border x:Name="BusyOverlay" Grid.Column="2" Background="#AAFFFFFF" Visibility="Collapsed">
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="240">
+                    <ProgressBar x:Name="BusyProgressBar" IsIndeterminate="True" Height="10" />
+                    <TextBlock x:Name="BusyText" Text="Loading..." Margin="0,10,0,0" HorizontalAlignment="Center" Foreground="#1F2933" FontWeight="SemiBold" />
                 </StackPanel>
+            </Border>
+            <GridSplitter Grid.Column="3" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                          Background="#D7DEE5" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />
+            <Border Grid.Column="4" Background="White" BorderBrush="#D7DEE5" BorderThickness="1" Padding="14">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Text="Object properties" FontSize="16" FontWeight="SemiBold" />
+                    <TextBlock x:Name="SelectedObjectText" DockPanel.Dock="Top" Text="No object selected" Foreground="#52606D" TextWrapping="Wrap" Margin="0,18,0,0" />
+                    <Separator DockPanel.Dock="Top" Margin="0,18,0,10" />
+                    <TextBlock x:Name="PropertySummaryText" DockPanel.Dock="Top" Foreground="#263238" TextWrapping="Wrap" Margin="0,0,0,10" />
+                    <TextBlock x:Name="PropertyHintText" DockPanel.Dock="Top" Foreground="#52606D" TextWrapping="Wrap" FontStyle="Italic" Margin="0,0,0,10" />
+                    <TextBlock DockPanel.Dock="Top" Text="Attributes" FontWeight="SemiBold" Margin="0,0,0,6" />
+                    <DataGrid x:Name="AttributesGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              CanUserAddRows="False" CanUserDeleteRows="False" CanUserReorderColumns="False"
+                              CanUserResizeRows="False" RowHeaderWidth="0" SelectionMode="Single"
+                              Background="White" BorderThickness="1" BorderBrush="#D7DEE5"
+                              AlternatingRowBackground="#F4F6F8" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="*" />
+                            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="1.4*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
             </Border>
         </Grid>
     </DockPanel>

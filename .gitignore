@@ -14,6 +14,8 @@
 # Local connection settings and secrets
 postgres-connection.json
 appsettings.Local.json
+data/*.gpkg
+data/*_shp/
 
 # Test and tooling output
 TestResults/

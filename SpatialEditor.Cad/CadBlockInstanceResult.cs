@@ -2,12 +2,10 @@ using NetTopologySuite.Geometries;
 
 namespace SpatialEditor.Cad;
 
-public sealed record CadImportResult(
+public sealed record CadBlockInstanceResult(
     string BlockName,
     string? Layer,
     Geometry ActualGeometry,
     Geometry OuterGeometry,
     IReadOnlyDictionary<string, string?> Attributes,
-    string FeatureType = "dxf_layer",
-    int EntityCount = 0,
     bool OuterGeometryIsFallback = false);

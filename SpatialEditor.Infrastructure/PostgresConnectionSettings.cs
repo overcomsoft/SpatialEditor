@@ -12,6 +12,7 @@ public sealed class PostgresConnectionSettings
     public string Username { get; set; } = "postgres";
     public string Password { get; set; } = string.Empty;
     public bool IncludeErrorDetail { get; set; } = true;
+    public List<string> SelectedLayers { get; set; } = new();
 
     [JsonIgnore]
     public string ConnectionString
