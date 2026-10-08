@@ -115,6 +115,7 @@
 |---|---|
 | README.md | 실행·화면·조작 방법 |
 | DEVELOPMENT_STATUS.md | 이 문서: 개발 현황과 기능 목록 |
+| DATABASE_SCHEMA.md | 서버 데이터베이스 테이블 정의서와 ERD |
 | LIBRARY_DESIGN.md | 블록 라이브러리·사용자 관리 설계와 1단계 구현 내용 |
 | SYNC_PLAN.md | 다중 사용자 동기화 계획과 구현 결과 |
 | SPATIAL_EDITOR_DEVELOPMENT_PLAN.md | 초기 개발 계획 |
