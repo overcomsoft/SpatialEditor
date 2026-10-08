@@ -112,11 +112,51 @@ public partial class MainWindow : Window
     {
         if (!layerColors.TryGetValue(layerName, out var color))
         {
-            color = LayerPalette[layerColors.Count % LayerPalette.Length];
+            var paletteColor = LayerPalette[layerColors.Count % LayerPalette.Length];
+            defaultLayerColors[layerName] = paletteColor;
+            color = connectionSettings?.LayerStyles is { } styles
+                && styles.TryGetValue(layerName, out var style)
+                && TryParseHexColor(style.Color, out var custom)
+                ? custom
+                : paletteColor;
             layerColors[layerName] = color;
         }
 
         return color;
+    }
+
+    private readonly Dictionary<string, Color> defaultLayerColors = new(StringComparer.OrdinalIgnoreCase);
+
+    private const double DefaultLineThickness = 1.0;
+
+    private double GetLayerThickness(string layerName) =>
+        connectionSettings?.LayerStyles is { } styles && styles.TryGetValue(layerName, out var style) && style.Thickness > 0
+            ? style.Thickness
+            : DefaultLineThickness;
+
+    private static bool TryParseHexColor(string? hex, out Color color)
+    {
+        color = default;
+        if (hex is { Length: 7 } && hex[0] == '#'
+            && int.TryParse(hex.AsSpan(1), System.Globalization.NumberStyles.HexNumber, System.Globalization.CultureInfo.InvariantCulture, out var rgb))
+        {
+            color = Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Round joins and caps make touching segments (separate DXF lines, polygon corners) read as
+    /// one continuous line, even when zoomed in and drawn thick; WPF's defaults (miter joins,
+    /// flat caps) leave visible notches and gaps there.
+    /// </summary>
+    private static void ApplyRoundStroke(Shape shape)
+    {
+        shape.StrokeLineJoin = PenLineJoin.Round;
+        shape.StrokeStartLineCap = PenLineCap.Round;
+        shape.StrokeEndLineCap = PenLineCap.Round;
     }
 
     private enum EditDragKind
@@ -214,6 +254,10 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        BuildText.Text = BuildInfo.Label;
+        mapScale.Changed += (_, _) => ScheduleMiniMapViewport();
+        mapTranslation.Changed += (_, _) => ScheduleMiniMapViewport();
+        MapCanvas.SizeChanged += (_, _) => ScheduleMiniMapViewport();
         var mapTransform = new TransformGroup
         {
             Children = { mapScale, mapTranslation }
@@ -228,32 +272,815 @@ public partial class MainWindow : Window
         Loaded += MainWindow_Loaded;
     }
 
+    private bool isConnected;
+
+    private AppUser? currentUser;
+
+    private bool Has(string permission) => currentUser?.Has(permission) == true;
+
+    private bool CanImport => isConnected && Has(Permissions.ImportDxf);
+
+    private void SetConnected(bool connected)
+    {
+        isConnected = connected;
+        ApplyUserState();
+    }
+
+    /// <summary>Enables each feature only when connected and the logged-in user holds its permission.</summary>
+    private void ApplyUserState()
+    {
+        ImportButton.IsEnabled = CanImport;
+        DeleteImportButton.IsEnabled = CanImport;
+        EditModeButton.IsEnabled = isConnected && Has(Permissions.DrawingEdit);
+        UsersMenuItem.IsEnabled = Has(Permissions.UserManage);
+        LibraryMenuItem.IsEnabled = isConnected && Has(Permissions.LibraryView);
+        RegisterLibraryMenuItem.IsEnabled = isConnected && Has(Permissions.LibraryCreate);
+        PasswordMenuItem.IsEnabled = currentUser is not null;
+        LogoutMenuItem.IsEnabled = isConnected;
+        LogoutMenuItem.Header = currentUser is null ? "_Log in" : "_Log out";
+        LogoutMenuIcon.Source = (ImageSource)FindResource(currentUser is null ? "Icon.Login" : "Icon.Logout");
+        ConnectionDot.Fill = new SolidColorBrush(isConnected ? Color.FromRgb(0x43, 0xA0, 0x47) : Color.FromRgb(0xB0, 0xBE, 0xC5));
+        ConnectionSummaryText.Text = isConnected
+            ? $"{connectionSettings.Host}:{connectionSettings.Port}/{connectionSettings.Database}"
+            : "Not connected";
+        UserSummaryText.Text = currentUser is null
+            ? "Not logged in"
+            : $"{currentUser.DisplayName} ({(currentUser.Roles.Count == 0 ? "no role" : string.Join(", ", currentUser.Roles))})";
+    }
+
+    private bool Require(string permission, string action)
+    {
+        if (Has(permission))
+        {
+            return true;
+        }
+
+        MessageBox.Show(this, $"You do not have permission to {action}.", "Permission denied", MessageBoxButton.OK, MessageBoxImage.Warning);
+        return false;
+    }
+
+    private async Task AuditAsync(string action, string? entityType, string? entityId, string? summary)
+    {
+        if (currentUser is null)
+        {
+            return;
+        }
+
+        await using var users = new UserRepository(connectionSettings.ConnectionString);
+        await users.TryWriteAuditAsync(currentUser, action, entityType, entityId, summary);
+    }
+
+    /// <summary>
+    /// Shows the login window (or the first-administrator setup when there are no users), forces a
+    /// password change when required, and remembers the ID for next time.
+    /// </summary>
+    private async Task<bool> LoginAsync()
+    {
+        try
+        {
+            await using var users = new UserRepository(connectionSettings.ConnectionString);
+            await users.EnsureSchemaAsync();
+            var setup = !await users.HasUsersAsync();
+            var dialog = new LoginWindow(users, connectionSettings.LastLoginId, setup) { Owner = this };
+            if (dialog.ShowDialog() != true || dialog.User is null)
+            {
+                return false;
+            }
+
+            var user = dialog.User;
+            while (user.MustChangePassword)
+            {
+                var change = new PasswordWindow("Change password", "You must set a new password before continuing.", askOld: true, allowCancel: false)
+                {
+                    Owner = this
+                };
+                if (change.ShowDialog() != true)
+                {
+                    return false;
+                }
+
+                try
+                {
+                    await users.ChangeOwnPasswordAsync(user, change.OldPassword, change.NewPassword);
+                    break;
+                }
+                catch (InvalidOperationException exception)
+                {
+                    MessageBox.Show(this, exception.Message, "Change password", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+
+            currentUser = user;
+            connectionSettings.LastLoginId = user.LoginId;
+            try
+            {
+                await connectionSettings.SaveAsync();
+            }
+            catch (Exception)
+            {
+                // Remembering the ID is a convenience only.
+            }
+
+            return true;
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Login failed: {exception.Message}";
+            MessageBox.Show(this, $"Login failed: {exception.Message}", "Log in", MessageBoxButton.OK, MessageBoxImage.Error);
+            return false;
+        }
+    }
+
+    /// <summary>After a (new) server connection: log in, then load the drawing data the user may see.</summary>
+    private async Task CompleteConnectionAsync()
+    {
+        currentUser = null;
+        ClearMapAndLayers();
+        SetConnected(true);
+        await LoginAndLoadAsync();
+    }
+
+    private async Task LoginAndLoadAsync()
+    {
+        if (!await LoginAsync())
+        {
+            ApplyUserState();
+            StatusText.Text = "Not logged in. Use the Log in button.";
+            return;
+        }
+
+        ApplyUserState();
+        if (Has(Permissions.DrawingView))
+        {
+            await StartSyncAsync();
+            await PromptLayerSelectionAndLoadAsync();
+        }
+        else
+        {
+            StatusText.Text = "Logged in, but your roles do not allow viewing drawings.";
+        }
+    }
+
+    private void ClearMapAndLayers()
+    {
+        StopSync();
+        if (isEditMode)
+        {
+            ExitEditMode();
+        }
+
+        MapLayerCanvas.Children.Clear();
+        importedFeatures.Clear();
+        blockGroups = null;
+        baseStrokeWidths.Clear();
+        shapesByLayer.Clear();
+        layerZOrder.Clear();
+        hiddenLayers.Clear();
+        zOrderCounter = 0;
+        selectionHighlight = null;
+        selectedFeatureLayer = null;
+        selectedFeature = null;
+        LayersPanel.Children.Clear();
+        SelectedObjectText.Text = "No object selected";
+        ClearPropertyDetails();
+        ScheduleMiniMapRebuild();
+    }
+
+    private async void Logout_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUser is null)
+        {
+            await LoginAndLoadAsync();
+            return;
+        }
+
+        if (isEditMode && HasPendingEdits())
+        {
+            var answer = MessageBox.Show(this, "Discard unsaved edits and log out?", "Log out", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        await AuditAsync("logout", "user", currentUser.Id.ToString(), null);
+        currentUser = null;
+        ClearMapAndLayers();
+        ApplyUserState();
+        await LoginAndLoadAsync();
+    }
+
+    private async void ChangePassword_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUser is null)
+        {
+            return;
+        }
+
+        var dialog = new PasswordWindow("Change password", "Choose a new password.", askOld: true) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await using var users = new UserRepository(connectionSettings.ConnectionString);
+            await users.ChangeOwnPasswordAsync(currentUser, dialog.OldPassword, dialog.NewPassword);
+            StatusText.Text = "Your password was changed.";
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "Change password", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    // ---- Overview map (minimap) ------------------------------------------------------------
+
+    private bool miniMapRebuildPending;
+    private bool miniMapViewportPending;
+    private bool miniMapDragging;
+
+    /// <summary>Redraws the overview shortly after layer content/visibility/style changes (coalesced).</summary>
+    private void ScheduleMiniMapRebuild()
+    {
+        if (miniMapRebuildPending)
+        {
+            return;
+        }
+
+        miniMapRebuildPending = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
+        {
+            miniMapRebuildPending = false;
+            RebuildMiniMap();
+        }));
+    }
+
+    private void ScheduleMiniMapViewport()
+    {
+        if (miniMapViewportPending)
+        {
+            return;
+        }
+
+        miniMapViewportPending = true;
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Render, new Action(() =>
+        {
+            miniMapViewportPending = false;
+            UpdateMiniMapViewport();
+        }));
+    }
+
+    /// <summary>
+    /// The overview reuses the map's own (frozen-size) path geometries with a thin fixed-width pen, so it
+    /// shows the same layers, colours, order and visibility as the main view at any zoom level.
+    /// </summary>
+    private void RebuildMiniMap()
+    {
+        MiniMapShapes.Children.Clear();
+        if (renderedEnvelope is null || shapesByLayer.Count == 0 || renderedWidth <= 0 || renderedHeight <= 0)
+        {
+            MiniMapViewport.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        MiniMapCanvas.Width = renderedWidth;
+        MiniMapCanvas.Height = renderedHeight;
+        foreach (var (layerName, shapes) in shapesByLayer)
+        {
+            if (hiddenLayers.Contains(layerName))
+            {
+                continue;
+            }
+
+            foreach (var shape in shapes.OfType<System.Windows.Shapes.Path>())
+            {
+                var copy = new System.Windows.Shapes.Path
+                {
+                    Data = shape.Data,
+                    Stroke = shape.Stroke,
+                    Fill = shape.Fill,
+                    StrokeLineJoin = PenLineJoin.Round,
+                    IsHitTestVisible = false
+                };
+                Panel.SetZIndex(copy, Panel.GetZIndex(shape));
+                MiniMapShapes.Children.Add(copy);
+            }
+        }
+
+        MiniMapBox.UpdateLayout();
+        ApplyMiniMapStrokeWidths();
+        UpdateMiniMapViewport();
+    }
+
+    /// <summary>Scale from map coordinates to overview pixels.</summary>
+    private double MiniMapScale => renderedWidth > 0 && MiniMapBox.ActualWidth > 0 ? MiniMapBox.ActualWidth / renderedWidth : 1;
+
+    private void ApplyMiniMapStrokeWidths()
+    {
+        var thickness = 1.0 / MiniMapScale;
+        foreach (var child in MiniMapShapes.Children.OfType<System.Windows.Shapes.Path>())
+        {
+            child.StrokeThickness = thickness;
+        }
+
+        MiniMapViewport.StrokeThickness = 1.6 / MiniMapScale;
+    }
+
+    /// <summary>Places the red rectangle on the part of the drawing currently visible in the map view.</summary>
+    private void UpdateMiniMapViewport()
+    {
+        if (renderedEnvelope is null || shapesByLayer.Count == 0
+            || mapScale.ScaleX <= 0 || mapScale.ScaleY <= 0 || MapCanvas.ActualWidth <= 0)
+        {
+            MiniMapViewport.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var left = -mapTranslation.X / mapScale.ScaleX;
+        var top = -mapTranslation.Y / mapScale.ScaleY;
+        var right = (MapCanvas.ActualWidth - mapTranslation.X) / mapScale.ScaleX;
+        var bottom = (MapCanvas.ActualHeight - mapTranslation.Y) / mapScale.ScaleY;
+        Canvas.SetLeft(MiniMapViewport, left);
+        Canvas.SetTop(MiniMapViewport, top);
+        MiniMapViewport.Width = Math.Max(right - left, 0);
+        MiniMapViewport.Height = Math.Max(bottom - top, 0);
+        MiniMapViewport.Visibility = Visibility.Visible;
+    }
+
+    private void MiniMap_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyMiniMapStrokeWidths();
+        ScheduleMiniMapViewport();
+    }
+
+    /// <summary>Pans the map so the clicked overview point becomes the centre of the view.</summary>
+    private void CenterMapOnMiniMapPoint(System.Windows.Point point)
+    {
+        if (renderedEnvelope is null || shapesByLayer.Count == 0)
+        {
+            return;
+        }
+
+        var x = Math.Clamp(point.X, 0, renderedWidth);
+        var y = Math.Clamp(point.Y, 0, renderedHeight);
+        mapTranslation.X = MapCanvas.ActualWidth / 2 - x * mapScale.ScaleX;
+        mapTranslation.Y = MapCanvas.ActualHeight / 2 - y * mapScale.ScaleY;
+    }
+
+    private void MiniMap_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (renderedEnvelope is null)
+        {
+            return;
+        }
+
+        miniMapDragging = true;
+        MiniMapBorder.CaptureMouse();
+        CenterMapOnMiniMapPoint(e.GetPosition(MiniMapCanvas));
+        e.Handled = true;
+    }
+
+    private void MiniMap_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (miniMapDragging)
+        {
+            CenterMapOnMiniMapPoint(e.GetPosition(MiniMapCanvas));
+        }
+    }
+
+    private void MiniMap_MouseUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        miniMapDragging = false;
+        MiniMapBorder.ReleaseMouseCapture();
+    }
+
+    // ---- Multi-user synchronisation -------------------------------------------------------
+
+    private readonly Guid sessionId = Guid.NewGuid();
+    private SyncCoordinator? sync;
+    private bool syncCheckRunning;
+
+    private ChangeContext CurrentChangeContext => new(currentUser?.Id, currentUser?.DisplayName, sessionId);
+
+    private async Task StartSyncAsync()
+    {
+        StopSync();
+        try
+        {
+            var coordinator = new SyncCoordinator(
+                connectionSettings.ConnectionString, sessionId,
+                () => layerChecksByName.Keys.ToArray());
+            coordinator.CheckRequested += () => _ = CheckForSyncChangesAsync();
+            coordinator.ConnectionChanged += _ => UpdateSyncStatus();
+            await coordinator.StartAsync();
+            sync = coordinator;
+            UpdateSyncStatus();
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"동기화를 시작할 수 없습니다: {exception.Message}";
+            SyncStatusText.Text = "동기화: 사용 안 함";
+        }
+    }
+
+    private void StopSync()
+    {
+        var old = sync;
+        sync = null;
+        SyncStatusText.Text = string.Empty;
+        if (old is not null)
+        {
+            _ = old.DisposeAsync().AsTask();
+        }
+    }
+
+    private void ScheduleSyncCheck()
+    {
+        if (sync is not null)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.ApplicationIdle, new Action(() => _ = CheckForSyncChangesAsync()));
+        }
+    }
+
+    private void SyncStatus_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        _ = CheckForSyncChangesAsync(force: true);
+
+    private void UpdateSyncStatus()
+    {
+        var coordinator = sync;
+        if (coordinator is null)
+        {
+            SyncStatusText.Text = string.Empty;
+            return;
+        }
+
+        if (coordinator.Pending is { HasChanges: true } pending)
+        {
+            SyncStatusText.Text = $"갱신 대기 ({SyncCoordinator.CountChanges(pending)}건)";
+            SyncStatusText.Foreground = new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x00));
+            SyncStatusText.FontWeight = FontWeights.SemiBold;
+        }
+        else
+        {
+            SyncStatusText.Text = coordinator.IsListening ? "동기화: 연결됨" : "동기화: 재연결 중";
+            SyncStatusText.Foreground = new SolidColorBrush(coordinator.IsListening ? Color.FromRgb(0x2E, 0x7D, 0x32) : Color.FromRgb(0x78, 0x90, 0x9C));
+            SyncStatusText.FontWeight = FontWeights.Normal;
+        }
+    }
+
+    private static string BuildSyncMessage(ChangeBatch batch)
+    {
+        var lines = batch.Summaries.Take(8).Select(summary =>
+        {
+            var who = string.IsNullOrWhiteSpace(summary.UserName) ? "다른 사용자" : summary.UserName;
+            var parts = new List<string>();
+            if (summary.Updated > 0) parts.Add($"수정 {summary.Updated}");
+            if (summary.Added > 0) parts.Add($"추가 {summary.Added}");
+            if (summary.Deleted > 0) parts.Add($"삭제 {summary.Deleted}");
+            if (summary.WholeLayer) parts.Add("DXF 가져오기/삭제");
+            return $"• {who} 님 - {summary.LayerName}: {string.Join(", ", parts)}";
+        }).ToList();
+        if (batch.Summaries.Count > lines.Count)
+        {
+            lines.Add($"… 외 {batch.Summaries.Count - lines.Count}건");
+        }
+
+        return "서버 데이터가 변경되었습니다.\n\n" + string.Join("\n", lines) + "\n\n갱신하시겠습니까?";
+    }
+
+    /// <summary>
+    /// Looks for changes other sessions saved to the loaded layers and, if there are new ones, asks
+    /// whether to refresh. While editing, the question waits until the edit is saved or discarded.
+    /// </summary>
+    private async Task CheckForSyncChangesAsync(bool force = false)
+    {
+        var coordinator = sync;
+        if (coordinator is null || syncCheckRunning || layerChecksByName.Count == 0
+            || BusyOverlay.Visibility == Visibility.Visible)
+        {
+            return;
+        }
+
+        syncCheckRunning = true;
+        try
+        {
+            var batch = await coordinator.CheckAsync();
+            if (!ReferenceEquals(coordinator, sync))
+            {
+                return;
+            }
+
+            UpdateSyncStatus();
+            if (!batch.HasChanges)
+            {
+                return;
+            }
+
+            if (isEditMode)
+            {
+                if (force)
+                {
+                    MessageBox.Show(this, "편집을 저장하거나 취소한 뒤에 갱신할 수 있습니다.", "서버 데이터 변경", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+                return;
+            }
+
+            if (!force && !coordinator.IsNewSinceDeclined(batch))
+            {
+                return;
+            }
+
+            var answer = MessageBox.Show(this, BuildSyncMessage(batch), "서버 데이터 변경", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (!ReferenceEquals(coordinator, sync))
+            {
+                return;
+            }
+
+            if (answer == MessageBoxResult.Yes)
+            {
+                await ReloadForSyncAsync();
+            }
+            else
+            {
+                coordinator.Decline(batch);
+            }
+
+            UpdateSyncStatus();
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"동기화 확인 실패: {exception.Message}";
+        }
+        finally
+        {
+            syncCheckRunning = false;
+        }
+    }
+
+    /// <summary>Reloads the loaded layers but keeps the user's zoom/pan position and hidden layers.</summary>
+    private async Task ReloadForSyncAsync()
+    {
+        var centerX = MapCanvas.ActualWidth / 2;
+        var centerY = MapCanvas.ActualHeight / 2;
+        Coordinate? centerWorld = null;
+        if (renderedEnvelope is not null && mapScale.ScaleX > 0 && mapScale.ScaleY > 0)
+        {
+            centerWorld = UnprojectFromScreen(new System.Windows.Point(
+                (centerX - mapTranslation.X) / mapScale.ScaleX,
+                (centerY - mapTranslation.Y) / mapScale.ScaleY));
+        }
+
+        var scaleX = mapScale.ScaleX;
+        var scaleY = mapScale.ScaleY;
+        var hidden = hiddenLayers.ToList();
+
+        await LoadImportedPolygonsAsync();
+
+        if (centerWorld is not null && renderedEnvelope is not null)
+        {
+            var projected = ProjectToScreen(centerWorld);
+            mapScale.ScaleX = scaleX;
+            mapScale.ScaleY = scaleY;
+            mapTranslation.X = centerX - projected.X * scaleX;
+            mapTranslation.Y = centerY - projected.Y * scaleY;
+            UpdateZoomText();
+            UpdateStrokeWidths();
+        }
+
+        foreach (var name in hidden)
+        {
+            SetLayerChecked(name, false);
+        }
+
+        StatusText.Text = "서버 데이터로 갱신했습니다.";
+    }
+
+    private async void OpenLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUser is null || !Require(Permissions.LibraryView, "view the block library"))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var library = new LibraryRepository(connectionSettings.ConnectionString);
+            await library.EnsureSchemaAsync();
+            new LibraryWindow(library, currentUser, AuditAsync) { Owner = this }.ShowDialog();
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Could not open the library: {exception.Message}";
+        }
+    }
+
+    /// <summary>The saved block instance the user has selected (view mode or edit mode), if exactly one.</summary>
+    private (long InstanceId, string? BlockName)? GetSelectedBlockInstance(out string? problem)
+    {
+        problem = null;
+        if (isEditMode)
+        {
+            if (selectedEditIds.Count != 1)
+            {
+                problem = "Select exactly one block object first.";
+                return null;
+            }
+
+            var id = selectedEditIds.First();
+            if (!IsEncodedBlockInstanceId(id) || !editableSourcesById.TryGetValue(id, out var source))
+            {
+                problem = "The selected object is not a saved block instance.";
+                return null;
+            }
+
+            if (pendingEdits.TryGetValue(id, out var pending) && (pending.HasChanges || pending.IsNew))
+            {
+                problem = "Save or discard the pending edits of this block before registering it.";
+                return null;
+            }
+
+            return (DecodeBlockInstanceId(id), source.BlockName);
+        }
+
+        if (selectedFeature is { FeatureType: "block_instance" } feature)
+        {
+            feature.Attributes.TryGetValue("block_name", out var blockName);
+            return (feature.Id, blockName);
+        }
+
+        problem = "Select a block object first.";
+        return null;
+    }
+
+    private async void RegisterInLibrary_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUser is null || !Require(Permissions.LibraryCreate, "register library blocks"))
+        {
+            return;
+        }
+
+        if (GetSelectedBlockInstance(out var problem) is not { } selection)
+        {
+            MessageBox.Show(this, problem, "Register in library", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            await using var library = new LibraryRepository(connectionSettings.ConnectionString);
+            await library.EnsureSchemaAsync();
+            var categories = await library.ListCategoriesAsync();
+            var window = LibraryItemWindow.ForRegister(categories, selection.BlockName ?? $"BLOCK-{selection.InstanceId}");
+            window.Owner = this;
+            if (window.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var result = await library.RegisterFromInstanceAsync(
+                selection.InstanceId, window.Code, window.ItemName, window.CategoryId,
+                window.Vendor, window.ModelNo, currentUser.Id);
+            if (result.Outcome == LibraryRegisterOutcome.Created)
+            {
+                await AuditAsync("library.register", "block_library", result.LibraryId.ToString(), result.Code);
+                StatusText.Text = $"Registered '{result.Code}' in the block library.";
+            }
+            else
+            {
+                await AuditAsync("library.link", "block_library", result.LibraryId.ToString(), $"instance {selection.InstanceId} -> {result.Code}");
+                StatusText.Text = $"The library already holds this shape as '{result.Code}'; the block was linked to it.";
+                MessageBox.Show(this, StatusText.Text, "Register in library", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (InvalidOperationException exception)
+        {
+            MessageBox.Show(this, exception.Message, "Register in library", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Register failed: {exception.Message}";
+        }
+    }
+
+    private async void ManageUsers_Click(object sender, RoutedEventArgs e)
+    {
+        if (currentUser is null || !Require(Permissions.UserManage, "manage users"))
+        {
+            return;
+        }
+
+        await using var users = new UserRepository(connectionSettings.ConnectionString);
+        new UserManagementWindow(users, currentUser) { Owner = this }.ShowDialog();
+
+        // Roles or the account itself may have been changed from inside the window.
+        try
+        {
+            var refreshed = await users.GetUserAsync(currentUser.Id);
+            if (refreshed is null || !refreshed.IsActive)
+            {
+                MessageBox.Show(this, "Your account is no longer active. You will be logged out.", "User management");
+                currentUser = null;
+                ClearMapAndLayers();
+                ApplyUserState();
+                await LoginAndLoadAsync();
+                return;
+            }
+
+            currentUser = refreshed;
+            ApplyUserState();
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Could not refresh your permissions: {exception.Message}";
+        }
+    }
+
+    /// <summary>Shows the connection window; returns the settings that connected, or null if cancelled.</summary>
+    private PostgresConnectionSettings? ShowServerDialog(string? message)
+    {
+        var dialog = new ServerConnectionWindow(connectionSettings, message) { Owner = this };
+        return dialog.ShowDialog() == true ? dialog.Settings : null;
+    }
+
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
             connectionSettings = await PostgresConnectionSettings.LoadAsync();
-            HostTextBox.Text = connectionSettings.Host;
-            PortTextBox.Text = connectionSettings.Port.ToString();
-            DatabaseTextBox.Text = connectionSettings.Database;
-            UsernameTextBox.Text = connectionSettings.Username;
-            PasswordInput.Password = connectionSettings.Password;
-            ImportButton.IsEnabled = true;
-            DeleteImportButton.IsEnabled = true;
-            EditModeButton.IsEnabled = true;
-            if (string.IsNullOrWhiteSpace(connectionSettings.Password))
-            {
-                StatusText.Text = "Enter a PostgreSQL password, save the JSON, then test the connection.";
-            }
-            else
-            {
-                await PromptLayerSelectionAndLoadAsync();
-            }
         }
         catch (Exception exception)
         {
-            StatusText.Text = $"Could not load connection settings: {exception.Message}";
+            connectionSettings = new PostgresConnectionSettings();
+            StatusText.Text = $"Could not read the connection settings file: {exception.Message}";
         }
+
+        await ConnectOnStartupAsync();
+    }
+
+    /// <summary>
+    /// Connects with the saved settings; when there are none or the connection fails, the server
+    /// window opens (with the reason) so the user can correct them.
+    /// </summary>
+    private async Task ConnectOnStartupAsync()
+    {
+        string? failure = null;
+        if (string.IsNullOrWhiteSpace(connectionSettings.Password))
+        {
+            failure = "No saved connection yet. Enter the PostgreSQL connection details.";
+        }
+        else
+        {
+            ShowBusy("Connecting to PostgreSQL...");
+            try
+            {
+                await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+                StatusText.Text = await repository.TestConnectionAsync();
+            }
+            catch (Exception exception)
+            {
+                failure = $"Automatic connection failed: {exception.Message}";
+            }
+            finally
+            {
+                HideBusy();
+            }
+        }
+
+        if (failure is not null)
+        {
+            var settings = ShowServerDialog(failure);
+            if (settings is null)
+            {
+                SetConnected(false);
+                StatusText.Text = "Not connected. Use the Server button to connect.";
+                return;
+            }
+
+            connectionSettings = settings;
+        }
+
+        await CompleteConnectionAsync();
+    }
+
+    private async void ConnectServer_Click(object sender, RoutedEventArgs e)
+    {
+        if (isEditMode)
+        {
+            MessageBox.Show("Exit edit mode (Save or Discard) before changing the server connection.", "Server", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var settings = ShowServerDialog(null);
+        if (settings is null)
+        {
+            return;
+        }
+
+        connectionSettings = settings;
+        await CompleteConnectionAsync();
     }
 
     private async Task PromptLayerSelectionAndLoadAsync()
@@ -313,6 +1140,12 @@ public partial class MainWindow : Window
         ShowBusy("Fetching imported geometries from PostgreSQL...");
         try
         {
+            // Anything saved from now on is newer than what this load shows.
+            if (sync is not null)
+            {
+                await sync.ResetBaselineAsync();
+            }
+
             await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
             var layerFilter = activeLayerFilter is { Count: > 0 } ? activeLayerFilter : null;
             var layerFeatures = await repository.FindImportedOuterPolygonsAsync(layerFilter);
@@ -360,12 +1193,14 @@ public partial class MainWindow : Window
     {
         BusyText.Text = message;
         BusyOverlay.Visibility = Visibility.Visible;
+        InputBlocker.Visibility = Visibility.Visible;
         Cursor = System.Windows.Input.Cursors.Wait;
     }
 
     private void HideBusy()
     {
         BusyOverlay.Visibility = Visibility.Collapsed;
+        InputBlocker.Visibility = Visibility.Collapsed;
         Cursor = System.Windows.Input.Cursors.Arrow;
     }
 
@@ -458,7 +1293,8 @@ public partial class MainWindow : Window
                 Fill = new SolidColorBrush(Color.FromArgb(60, color.R, color.G, color.B)),
                 Stroke = new SolidColorBrush(color)
             };
-            RegisterLayerPath(path, layerName, 1);
+            ApplyRoundStroke(path);
+            RegisterLayerPath(path, layerName, GetLayerThickness(layerName));
         }
 
         foreach (var (layerName, entry) in lineContexts)
@@ -471,7 +1307,8 @@ public partial class MainWindow : Window
                 Fill = null,
                 Stroke = new SolidColorBrush(color)
             };
-            RegisterLayerPath(path, layerName, 1);
+            ApplyRoundStroke(path);
+            RegisterLayerPath(path, layerName, GetLayerThickness(layerName));
         }
 
         foreach (var (layerName, entry) in pointContexts)
@@ -488,6 +1325,7 @@ public partial class MainWindow : Window
         }
 
         ResetView();
+        ScheduleMiniMapRebuild();
     }
 
     private static void AddPolygonFigure(StreamGeometryContext context, NtsPolygon polygon, Func<Coordinate, System.Windows.Point> project)
@@ -729,9 +1567,12 @@ public partial class MainWindow : Window
         PropertySummaryText.Text = $"Type: {feature.FeatureType}\nGeometry: {feature.Geometry.GeometryType}\nSRID: {feature.Geometry.SRID}\nValid: {feature.Geometry.IsValid}";
         PropertyHintText.Text = string.Empty;
         AttributesGrid.ItemsSource = feature.Attributes.Select(attribute => new AttributeRow(attribute.Key, attribute.Value)).ToArray();
+        // HighlightFeature clears the previous highlight (and with it selectedFeature/Layer), so the
+        // new selection must be recorded afterwards or hiding the layer could never clear it.
+        HighlightFeature(feature);
         selectedFeatureLayer = feature.LayerName ?? "(no layer)";
         selectedFeature = feature;
-        HighlightFeature(feature);
+        UpdateSelectionCount();
     }
 
     private void HighlightFeature(SpatialFeature feature)
@@ -749,7 +1590,10 @@ public partial class MainWindow : Window
             {
                 Data = BuildHighlightGeometry(collection),
                 Stroke = Brushes.Gold,
-                Fill = Brushes.Transparent
+                Fill = Brushes.Transparent,
+                StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
             },
             NtsPolygon polygon => new System.Windows.Shapes.Polygon
             {
@@ -783,6 +1627,7 @@ public partial class MainWindow : Window
             highlight.StrokeThickness = 4 / Math.Max(mapScale.ScaleX, 0.1);
         }
 
+        Panel.SetZIndex(highlight, 100000);
         MapLayerCanvas.Children.Add(highlight);
         selectionHighlight = highlight;
     }
@@ -834,17 +1679,35 @@ public partial class MainWindow : Window
         selectionHighlight = null;
         selectedFeatureLayer = null;
         selectedFeature = null;
+        UpdateSelectionCount();
     }
 
+    private readonly Dictionary<string, CheckBox> layerChecksByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, TextBlock> layerNameTextsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, System.Windows.Controls.Image> layerPencilsByName = new(StringComparer.OrdinalIgnoreCase);
+    private System.Windows.Point layerDragStart;
+    private Border? layerDragRow;
+    private const string LayerDragFormat = "SpatialEditor.Layer";
+
+    /// <summary>
+    /// QGIS-style layer list: visibility check box, color symbol (click = edit that layer), one-line
+    /// name with the object count, a pencil while the layer is being edited, double-click for the
+    /// style dialog, a right-click menu, and drag-and-drop to change the stacking order (top of the
+    /// list = top of the map).
+    /// </summary>
     private void PopulateLayerPanel(IReadOnlyList<LayerInfo> layers)
     {
         LayersPanel.Children.Clear();
         layerSwatchesByName.Clear();
         layerRowsByName.Clear();
+        layerChecksByName.Clear();
+        layerNameTextsByName.Clear();
+        layerPencilsByName.Clear();
         selectedLayerName = null;
         foreach (var layer in layers)
         {
-            var color = GetLayerColor(layer.LayerName);
+            var layerName = layer.LayerName;
+            var color = GetLayerColor(layerName);
             var swatch = new Rectangle
             {
                 Width = 14,
@@ -855,52 +1718,248 @@ public partial class MainWindow : Window
                 Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center,
                 Cursor = System.Windows.Input.Cursors.Hand,
-                Tag = layer.LayerName,
+                Tag = layerName,
                 ToolTip = "Click to edit this layer"
             };
             swatch.MouseLeftButtonDown += LayerSwatch_MouseLeftButtonDown;
-            layerSwatchesByName[layer.LayerName] = swatch;
+            layerSwatchesByName[layerName] = swatch;
 
             var checkBox = new CheckBox
             {
                 IsChecked = true,
-                Tag = layer.LayerName,
+                Tag = layerName,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 0, 6, 0),
                 ToolTip = "Show/hide this layer"
             };
             checkBox.Checked += LayerVisibilityChanged;
             checkBox.Unchecked += LayerVisibilityChanged;
+            layerChecksByName[layerName] = checkBox;
 
+            var count = layer.InstanceCount > 0 ? layer.InstanceCount : layer.EntityCount;
             var nameText = new TextBlock
             {
-                Text = $"{layer.LayerName} [{layer.GeometryTypes}] | Blocks: {layer.InstanceCount} | Entities: {layer.EntityCount}",
-                TextWrapping = TextWrapping.Wrap,
+                Text = $"{layerName} ({count:N0})",
+                TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
-                Cursor = System.Windows.Input.Cursors.Hand,
-                ToolTip = $"Layer: {layer.LayerName}\nGeometry: {layer.GeometryTypes}\nBlock instances: {layer.InstanceCount}\nEntities: {layer.EntityCount}"
+                ToolTip = $"Layer: {layerName}\nGeometry: {layer.GeometryTypes}\nBlock instances: {layer.InstanceCount}\nEntities: {layer.EntityCount}\n\nDouble-click: style   Drag: change order   Right-click: more"
             };
+            layerNameTextsByName[layerName] = nameText;
+
+            var pencil = new System.Windows.Controls.Image
+            {
+                Source = (ImageSource)FindResource("Icon.Edit"),
+                Width = 14,
+                Height = 14,
+                Margin = new Thickness(6, 0, 0, 0),
+                Visibility = Visibility.Collapsed,
+                ToolTip = "This layer is being edited"
+            };
+            layerPencilsByName[layerName] = pencil;
+
+            var content = new DockPanel { LastChildFill = true };
+            DockPanel.SetDock(checkBox, Dock.Left);
+            DockPanel.SetDock(swatch, Dock.Left);
+            DockPanel.SetDock(pencil, Dock.Right);
+            content.Children.Add(checkBox);
+            content.Children.Add(swatch);
+            content.Children.Add(pencil);
+            content.Children.Add(nameText);
 
             var row = new Border
             {
-                Padding = new Thickness(4),
-                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(4, 3, 4, 3),
+                Margin = new Thickness(0, 0, 0, 2),
                 CornerRadius = new CornerRadius(3),
                 Background = Brushes.Transparent,
-                Child = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Children = { checkBox, swatch, nameText }
-                }
+                Tag = layerName,
+                AllowDrop = true,
+                Child = content,
+                ContextMenu = BuildLayerContextMenu(layerName)
             };
-            var layerName = layer.LayerName;
-            nameText.MouseLeftButtonDown += (_, _) => SelectLayerRow(layerName);
-            layerRowsByName[layer.LayerName] = row;
+            row.MouseLeftButtonDown += LayerRow_MouseLeftButtonDown;
+            row.PreviewMouseMove += LayerRow_PreviewMouseMove;
+            row.DragOver += LayerRow_DragOver;
+            row.Drop += LayerRow_Drop;
+            layerRowsByName[layerName] = row;
 
             LayersPanel.Children.Add(row);
         }
 
+        ApplyLayerOrder();
         UpdateLayerSwatchEditState();
+    }
+
+    private ContextMenu BuildLayerContextMenu(string layerName)
+    {
+        MenuItem Item(string header, string icon, Action action)
+        {
+            var item = new MenuItem
+            {
+                Header = header,
+                Icon = new System.Windows.Controls.Image { Source = (ImageSource)FindResource(icon), Width = 16, Height = 16 }
+            };
+            item.Click += (_, _) => action();
+            return item;
+        }
+
+        var editItem = Item("Edit this layer", "Icon.Edit", () => _ = ToggleLayerEditAsync(layerName));
+        var menu = new ContextMenu();
+        menu.Opened += (_, _) => editItem.IsEnabled = EditModeButton.IsEnabled;
+        menu.Items.Add(Item("Zoom to layer", "Icon.Fit", () => ZoomToLayer(layerName)));
+        menu.Items.Add(Item("Style...", "Icon.Style", () => _ = OpenLayerStyleAsync(layerName)));
+        menu.Items.Add(editItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Show only this layer", "Icon.ShowAll", () => ShowOnlyLayer(layerName)));
+        menu.Items.Add(Item("Hide this layer", "Icon.HideAll", () => SetLayerChecked(layerName, false)));
+        return menu;
+    }
+
+    private void LayerRow_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not Border { Tag: string layerName } row)
+        {
+            return;
+        }
+
+        SelectLayerRow(layerName);
+        layerDragStart = e.GetPosition(null);
+        layerDragRow = row;
+        if (e.ClickCount == 2)
+        {
+            layerDragRow = null;
+            e.Handled = true;
+            _ = OpenLayerStyleAsync(layerName);
+        }
+    }
+
+    private void LayerRow_PreviewMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    {
+        if (e.LeftButton != System.Windows.Input.MouseButtonState.Pressed || layerDragRow is null)
+        {
+            return;
+        }
+
+        var position = e.GetPosition(null);
+        if (Math.Abs(position.X - layerDragStart.X) < SystemParameters.MinimumHorizontalDragDistance
+            && Math.Abs(position.Y - layerDragStart.Y) < SystemParameters.MinimumVerticalDragDistance)
+        {
+            return;
+        }
+
+        var row = layerDragRow;
+        layerDragRow = null;
+        if (row.Tag is string name)
+        {
+            DragDrop.DoDragDrop(row, new DataObject(LayerDragFormat, name), DragDropEffects.Move);
+        }
+    }
+
+    private void LayerRow_DragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(LayerDragFormat) ? DragDropEffects.Move : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void LayerRow_Drop(object sender, DragEventArgs e)
+    {
+        if (sender is not Border target || !e.Data.GetDataPresent(LayerDragFormat)
+            || e.Data.GetData(LayerDragFormat) is not string draggedName
+            || !layerRowsByName.TryGetValue(draggedName, out var dragged) || ReferenceEquals(dragged, target))
+        {
+            return;
+        }
+
+        var from = LayersPanel.Children.IndexOf(dragged);
+        var to = LayersPanel.Children.IndexOf(target);
+        if (from < 0 || to < 0)
+        {
+            return;
+        }
+
+        LayersPanel.Children.RemoveAt(from);
+        LayersPanel.Children.Insert(to, dragged);
+        e.Handled = true;
+        ApplyLayerOrder();
+    }
+
+    /// <summary>
+    /// Stacks the map shapes in the order of the layer list (first row on top). Inside a layer the
+    /// fills sit under the lines and the lines under the point markers. The same rank drives the
+    /// "which layer wins a click" rule.
+    /// </summary>
+    private void ApplyLayerOrder()
+    {
+        var names = LayersPanel.Children.OfType<Border>().Select(row => (string)row.Tag).ToList();
+        for (var index = 0; index < names.Count; index++)
+        {
+            var rank = names.Count - index;
+            layerZOrder[names[index]] = rank;
+            if (!shapesByLayer.TryGetValue(names[index], out var shapes))
+            {
+                continue;
+            }
+
+            foreach (var shape in shapes)
+            {
+                var kind = shape.Stroke is null ? 2 : shape.Fill is null ? 1 : 0;
+                Panel.SetZIndex(shape, rank * 10 + kind);
+            }
+        }
+
+        ScheduleMiniMapRebuild();
+    }
+
+    private void SetLayerChecked(string layerName, bool isChecked)
+    {
+        if (layerChecksByName.TryGetValue(layerName, out var checkBox))
+        {
+            checkBox.IsChecked = isChecked;
+        }
+    }
+
+    private void ShowOnlyLayer(string layerName)
+    {
+        foreach (var (name, checkBox) in layerChecksByName)
+        {
+            checkBox.IsChecked = string.Equals(name, layerName, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void ZoomToLayer(string layerName)
+    {
+        var envelope = new Envelope();
+        foreach (var feature in importedFeatures.Where(f => string.Equals(f.LayerName ?? "(no layer)", layerName, StringComparison.OrdinalIgnoreCase)))
+        {
+            envelope.ExpandToInclude(feature.Geometry.EnvelopeInternal);
+        }
+
+        if (envelope.IsNull || renderedEnvelope is null)
+        {
+            StatusText.Text = $"Layer '{layerName}' has nothing to zoom to.";
+            return;
+        }
+
+        ZoomToEnvelope(envelope);
+    }
+
+    private void ZoomToEnvelope(Envelope envelope)
+    {
+        var a = ProjectToScreen(new Coordinate(envelope.MinX, envelope.MinY));
+        var b = ProjectToScreen(new Coordinate(envelope.MaxX, envelope.MaxY));
+        var left = Math.Min(a.X, b.X);
+        var right = Math.Max(a.X, b.X);
+        var top = Math.Min(a.Y, b.Y);
+        var bottom = Math.Max(a.Y, b.Y);
+        var canvasWidth = Math.Max(MapCanvas.ActualWidth, 1);
+        var canvasHeight = Math.Max(MapCanvas.ActualHeight, 1);
+        var scale = Math.Clamp(Math.Min(canvasWidth / Math.Max(right - left, 1), canvasHeight / Math.Max(bottom - top, 1)) * 0.9, 0.1, 20);
+        mapScale.ScaleX = scale;
+        mapScale.ScaleY = scale;
+        mapTranslation.X = canvasWidth / 2 - (left + right) / 2 * scale;
+        mapTranslation.Y = canvasHeight / 2 - (top + bottom) / 2 * scale;
+        UpdateZoomText();
+        ScheduleStrokeWidthUpdate();
     }
 
     /// <summary>
@@ -943,6 +2002,16 @@ public partial class MainWindow : Window
             swatch.StrokeDashArray = isActive ? new DoubleCollection { 3, 2 } : null;
             swatch.StrokeThickness = isActive ? 2.5 : 1.5;
         }
+
+        foreach (var (name, text) in layerNameTextsByName)
+        {
+            text.FontWeight = activeLayerNames.Contains(name) ? FontWeights.Bold : FontWeights.Normal;
+        }
+
+        foreach (var (name, pencil) in layerPencilsByName)
+        {
+            pencil.Visibility = activeLayerNames.Contains(name) ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private void LayerVisibilityChanged(object sender, RoutedEventArgs e)
@@ -978,6 +2047,8 @@ public partial class MainWindow : Window
         {
             shape.Visibility = visibility;
         }
+
+        ScheduleMiniMapRebuild();
     }
 
     // Layers whose base-map drawing is hidden because their objects are drawn by the edit overlay.
@@ -1020,6 +2091,332 @@ public partial class MainWindow : Window
         }
 
         editMaskedLayers.Clear();
+    }
+
+    private async Task OpenLayerStyleAsync(string layerName)
+    {
+        var dialog = new LayerStyleWindow(layerName, GetLayerColor(layerName), GetLayerThickness(layerName)) { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        if (dialog.ResetRequested)
+        {
+            connectionSettings.LayerStyles.Remove(layerName);
+            layerColors[layerName] = defaultLayerColors.TryGetValue(layerName, out var original) ? original : LayerPalette[0];
+        }
+        else
+        {
+            connectionSettings.LayerStyles[layerName] = new LayerStyleSetting
+            {
+                Color = LayerStyleWindow.ToHex(dialog.SelectedColor),
+                Thickness = dialog.SelectedThickness
+            };
+            layerColors[layerName] = dialog.SelectedColor;
+        }
+
+        ApplyLayerStyle(layerName);
+        try
+        {
+            await connectionSettings.SaveAsync();
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Style applied, but saving it failed: {exception.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Re-colors and re-sizes a layer's already-drawn shapes in place (no reload), updates its
+    /// panel swatch, and redraws the edit overlay if the layer is being edited.
+    /// </summary>
+    private void ApplyLayerStyle(string layerName)
+    {
+        var color = GetLayerColor(layerName);
+        var thickness = GetLayerThickness(layerName);
+        var scale = Math.Max(mapScale.ScaleX, 0.1);
+
+        if (shapesByLayer.TryGetValue(layerName, out var layerShapes))
+        {
+            foreach (var shape in layerShapes)
+            {
+                if (shape.Stroke is not null)
+                {
+                    shape.Stroke = new SolidColorBrush(color);
+                    baseStrokeWidths[shape] = thickness;
+                    shape.StrokeThickness = thickness / scale;
+                }
+
+                if (shape.Fill is SolidColorBrush)
+                {
+                    // Polygon fills are translucent; point markers are solid.
+                    shape.Fill = shape.Stroke is null
+                        ? new SolidColorBrush(color)
+                        : new SolidColorBrush(Color.FromArgb(60, color.R, color.G, color.B));
+                }
+            }
+        }
+
+        if (layerSwatchesByName.TryGetValue(layerName, out var swatch))
+        {
+            swatch.Fill = new SolidColorBrush(Color.FromArgb(140, color.R, color.G, color.B));
+            swatch.Stroke = new SolidColorBrush(color);
+        }
+
+        if (isEditMode)
+        {
+            RenderEditableLayerObjects();
+        }
+
+        StatusText.Text = $"Layer '{layerName}' style: {LayerStyleWindow.ToHex(color)}, {thickness:0.##} px.";
+        ScheduleMiniMapRebuild();
+    }
+
+    private static void SetToggleState(Button button, bool on) => button.Tag = on ? "On" : null;
+
+    private void UpdateZoomText() => ZoomText.Text = $"{mapScale.ScaleX * 100:0}%";
+
+    private void UpdateSelectionCount() =>
+        SelectionCountText.Text = $"Selected: {(isEditMode ? selectedEditIds.Count : selectedFeature is null ? 0 : 1)}";
+
+    private void UpdateCursorCoordinates(System.Windows.Point canvasPoint)
+    {
+        if (renderedEnvelope is null)
+        {
+            return;
+        }
+
+        var scale = Math.Max(mapScale.ScaleX, 0.0001);
+        var world = UnprojectFromScreen(new System.Windows.Point(
+            (canvasPoint.X - mapTranslation.X) / scale,
+            (canvasPoint.Y - mapTranslation.Y) / scale));
+        CursorCoordText.Text = $"X {world.X:N2}    Y {world.Y:N2}";
+    }
+
+    private void MapCanvas_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) =>
+        CursorCoordText.Text = "X -    Y -";
+
+    private void HandleShortcut(System.Windows.Input.KeyEventArgs e)
+    {
+        if (System.Windows.Input.Keyboard.FocusedElement is TextBox or PasswordBox)
+        {
+            return;
+        }
+
+        var ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
+        var alt = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) != 0;
+
+        // The Korean IME reports letter keys as ImeProcessed; the real key is in ImeProcessedKey.
+        var key = e.Key == System.Windows.Input.Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
+        if (key == System.Windows.Input.Key.R && !ctrl && !alt && isEditMode && selectedEditIds.Count > 0)
+        {
+            // "r" turns clockwise, "R" (the typed capital: Shift, or Caps Lock without Shift) counter-clockwise.
+            e.Handled = true;
+            if (!e.IsRepeat)
+            {
+                var shift = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0;
+                var capital = shift ^ System.Windows.Input.Keyboard.IsKeyToggled(System.Windows.Input.Key.CapsLock);
+                RotateSelected(clockwise: !capital);
+            }
+
+            return;
+        }
+
+        if (ctrl && e.Key == System.Windows.Input.Key.S && isEditMode && SaveEditsButton.IsEnabled)
+        {
+            e.Handled = true;
+            SaveEdits_Click(this, new RoutedEventArgs());
+        }
+        else if (ctrl && e.Key == System.Windows.Input.Key.D && isEditMode && DuplicateButton.IsEnabled)
+        {
+            e.Handled = true;
+            DuplicateSelected_Click(this, new RoutedEventArgs());
+        }
+        else if (ctrl && e.Key == System.Windows.Input.Key.G && isEditMode && GroupButton.IsEnabled)
+        {
+            e.Handled = true;
+            GroupSelected_Click(this, new RoutedEventArgs());
+        }
+        else if (!ctrl && e.Key == System.Windows.Input.Key.Delete && isEditMode && DeleteObjectButton.IsEnabled)
+        {
+            e.Handled = true;
+            DeleteSelected_Click(this, new RoutedEventArgs());
+        }
+        else if (System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.None && e.Key == System.Windows.Input.Key.F)
+        {
+            e.Handled = true;
+            FitView_Click(this, new RoutedEventArgs());
+        }
+    }
+
+    private void DeselectAll_Click(object sender, RoutedEventArgs e)
+    {
+        if (isEditMode)
+        {
+            DeselectEditableObject();
+            return;
+        }
+
+        ClearSelectionHighlight();
+        SelectedObjectText.Text = "No object selected";
+        ClearPropertyDetails();
+    }
+
+    private void ExitApp_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void About_Click(object sender, RoutedEventArgs e)
+    {
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0";
+        MessageBox.Show(this,
+            "OmniDT SE (Spatial Editor) " + version + Environment.NewLine +
+            "Build " + BuildInfo.Number + " (" + BuildInfo.Display + ")" + Environment.NewLine + Environment.NewLine +
+            "PostGIS spatial data editor for CAD equipment blocks." + Environment.NewLine +
+            "Import DXF, edit block objects, manage users and permissions.",
+            "About OmniDT SE", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private double leftPanelWidth = 250;
+    private double rightPanelWidth = 260;
+
+    private void LeftPanelMenu_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        var visible = LeftPanelMenuItem.IsChecked;
+        if (!visible && LeftColumn.ActualWidth > 0)
+        {
+            leftPanelWidth = LeftColumn.ActualWidth;
+        }
+
+        LeftPanel.Visibility = LeftSplitter.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        LeftColumn.MinWidth = visible ? 170 : 0;
+        LeftColumn.Width = new GridLength(visible ? leftPanelWidth : 0);
+        LeftSplitColumn.Width = new GridLength(visible ? 6 : 0);
+    }
+
+    private void RightPanelMenu_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        var visible = RightPanelMenuItem.IsChecked;
+        if (!visible && RightColumn.ActualWidth > 0)
+        {
+            rightPanelWidth = RightColumn.ActualWidth;
+        }
+
+        RightPanel.Visibility = RightSplitter.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        RightColumn.MinWidth = visible ? 180 : 0;
+        RightColumn.Width = new GridLength(visible ? rightPanelWidth : 0);
+        RightSplitColumn.Width = new GridLength(visible ? 6 : 0);
+    }
+
+    private void StatusBarMenu_Changed(object sender, RoutedEventArgs e)
+    {
+        if (IsLoaded)
+        {
+            MainStatusBar.Visibility = StatusBarMenuItem.IsChecked ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void StatusConnection_Click(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        ConnectServer_Click(sender, new RoutedEventArgs());
+
+    /// <summary>Layer list actions need a connection, a login and the right to view drawings.</summary>
+    private bool CanReloadLayers()
+    {
+        if (!isConnected || currentUser is null)
+        {
+            StatusText.Text = "Connect to the server and log in first.";
+            return false;
+        }
+
+        if (!Require(Permissions.DrawingView, "view drawings"))
+        {
+            return false;
+        }
+
+        if (isEditMode)
+        {
+            MessageBox.Show(this, "Exit edit mode (Save or Discard) before reloading layers.", "Layers", MessageBoxButton.OK, MessageBoxImage.Information);
+            return false;
+        }
+
+        return true;
+    }
+
+    private async void LoadLayers_Click(object sender, RoutedEventArgs e)
+    {
+        if (CanReloadLayers())
+        {
+            await PromptLayerSelectionAndLoadAsync();
+        }
+    }
+
+    private async void RefreshLayers_Click(object sender, RoutedEventArgs e)
+    {
+        if (CanReloadLayers())
+        {
+            await LoadImportedPolygonsAsync();
+        }
+    }
+
+    private void ShowAllLayers_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var checkBox in layerChecksByName.Values)
+        {
+            checkBox.IsChecked = true;
+        }
+    }
+
+    private void HideAllLayers_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var checkBox in layerChecksByName.Values)
+        {
+            checkBox.IsChecked = false;
+        }
+    }
+
+    private bool TryGetSelectedLayer(out string layerName)
+    {
+        layerName = selectedLayerName ?? string.Empty;
+        if (selectedLayerName is null)
+        {
+            StatusText.Text = "Select a layer in the Layers panel first.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private async void SelectedLayerStyle_Click(object sender, RoutedEventArgs e)
+    {
+        if (TryGetSelectedLayer(out var layerName))
+        {
+            await OpenLayerStyleAsync(layerName);
+        }
+    }
+
+    private void SelectedLayerZoom_Click(object sender, RoutedEventArgs e)
+    {
+        if (TryGetSelectedLayer(out var layerName))
+        {
+            ZoomToLayer(layerName);
+        }
+    }
+
+    private async void SelectedLayerEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (TryGetSelectedLayer(out var layerName))
+        {
+            await ToggleLayerEditAsync(layerName);
+        }
     }
 
     private void ZoomIn_Click(object sender, RoutedEventArgs e) => ZoomAt(1.25, GetCanvasCenter());
@@ -1067,6 +2464,7 @@ public partial class MainWindow : Window
 
     private void MapCanvas_MouseMove(object sender, System.Windows.Input.MouseEventArgs e)
     {
+        UpdateCursorCoordinates(e.GetPosition(MapCanvas));
         if (editDragKind != EditDragKind.None)
         {
             UpdateEditDragPreview(e.GetPosition(EditableObjectsCanvas));
@@ -1098,7 +2496,8 @@ public partial class MainWindow : Window
 
         isPanning = false;
         MapCanvas.ReleaseMouseCapture();
-        MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
+        // Edit mode keeps a crosshair; view mode uses the normal arrow.
+        MapCanvas.Cursor = isEditMode ? System.Windows.Input.Cursors.Cross : System.Windows.Input.Cursors.Arrow;
     }
 
     private EditableLayerObject GetEditableSource(long id) =>
@@ -1145,7 +2544,11 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
+        await ToggleLayerEditAsync(layerName);
+    }
 
+    private async Task ToggleLayerEditAsync(string layerName)
+    {
         if (isEditMode && string.Equals(activeEditLayerName, layerName, StringComparison.OrdinalIgnoreCase))
         {
             if (HasPendingEdits())
@@ -1183,6 +2586,11 @@ public partial class MainWindow : Window
 
     private async Task EnterEditModeForLayerAsync(string? layerName)
     {
+        if (!Require(Permissions.DrawingEdit, "edit drawings"))
+        {
+            return;
+        }
+
         try
         {
             connectionSettings = ReadConnectionSettingsFromUi();
@@ -1245,18 +2653,25 @@ public partial class MainWindow : Window
 
             pendingEdits.Clear();
             ApplyEditMask(editableSourcesById.Values.Select(source => source.LayerName ?? "(no layer)").Distinct(StringComparer.OrdinalIgnoreCase));
+
+            // A selection highlight left over from view mode is drawn on the base map at the saved
+            // position; it would stay behind as a ghost while the object is moved or rotated.
+            ClearSelectionHighlight();
+            SelectedObjectText.Text = "No object selected";
+            ClearPropertyDetails();
             selectedEditId = null;
             selectedEditIds.Clear();
             GroupButton.IsEnabled = false;
             isVertexEditMode = false;
             ClearVertexHandles();
-            VertexEditButton.Content = "Vtx: Off";
+            SetToggleState(VertexEditButton, false);
             VertexEditButton.IsEnabled = false;
             DuplicateButton.IsEnabled = false;
             DeleteObjectButton.IsEnabled = false;
             activeEditLayerName = layerName;
             isEditMode = true;
-            EditModeButton.Content = "Exit Edit";
+            SetToggleState(EditModeButton, true);
+            MapCanvas.Cursor = System.Windows.Input.Cursors.Cross;
             ImportButton.IsEnabled = false;
             DeleteImportButton.IsEnabled = false;
             SaveEditsButton.IsEnabled = true;
@@ -1279,6 +2694,7 @@ public partial class MainWindow : Window
 
     private void ExitEditMode()
     {
+        ForgetEditableStrokeWidths();
         ClearEditMask();
         isEditMode = false;
         isVertexEditMode = false;
@@ -1296,13 +2712,15 @@ public partial class MainWindow : Window
         selectedEditId = null;
         selectedEditIds.Clear();
         boxSelectRectangle = null;
+        UpdateSelectionCount();
         GroupButton.IsEnabled = false;
-        EditModeButton.Content = "Edit";
-        ImportButton.IsEnabled = true;
-        DeleteImportButton.IsEnabled = true;
+        SetToggleState(EditModeButton, false);
+        MapCanvas.Cursor = System.Windows.Input.Cursors.Arrow;
+        ImportButton.IsEnabled = CanImport;
+        DeleteImportButton.IsEnabled = CanImport;
         DuplicateButton.IsEnabled = false;
         DeleteObjectButton.IsEnabled = false;
-        VertexEditButton.Content = "Vtx: Off";
+        SetToggleState(VertexEditButton, false);
         VertexEditButton.IsEnabled = false;
         SaveEditsButton.IsEnabled = false;
         DiscardEditsButton.IsEnabled = false;
@@ -1311,10 +2729,25 @@ public partial class MainWindow : Window
         ClearPropertyDetails();
         activeEditLayerName = null;
         UpdateLayerSwatchEditState();
+        ScheduleSyncCheck();
+    }
+
+    private void ForgetEditableStrokeWidths()
+    {
+        foreach (var shape in editableShapesById.Values.SelectMany(shapes => shapes))
+        {
+            baseStrokeWidths.Remove(shape);
+        }
+
+        foreach (var detail in editableDetailPathById.Values)
+        {
+            baseStrokeWidths.Remove(detail);
+        }
     }
 
     private void RenderEditableLayerObjects()
     {
+        ForgetEditableStrokeWidths();
         EditableObjectsCanvas.Children.Clear();
         editableShapesById.Clear();
         editableDetailPathById.Clear();
@@ -1414,10 +2847,13 @@ public partial class MainWindow : Window
     /// Selected (actively edited) objects render dashed and gold; unsaved new objects render
     /// dashed and green; everything else is a solid blue outline.
     /// </summary>
-    private static void ApplyEditableShapeStyle(Shape shape, bool isSelected, bool isNew)
+    private void ApplyEditableShapeStyle(Shape shape, bool isSelected, bool isNew)
     {
         shape.Stroke = isSelected ? Brushes.Gold : (isNew ? Brushes.MediumSeaGreen : Brushes.DodgerBlue);
-        shape.StrokeThickness = isSelected ? 2 : 1;
+        var width = isSelected ? 2.0 : 1.0;
+        // Registered so the outline keeps a constant on-screen width when zooming.
+        baseStrokeWidths[shape] = width;
+        shape.StrokeThickness = width / Math.Max(mapScale.ScaleX, 0.1);
         // Every editable outline is dashed; color tells the state apart (gold selected, green new).
         shape.StrokeDashArray = isSelected
             ? new DoubleCollection { 4, 2 }
@@ -1458,15 +2894,21 @@ public partial class MainWindow : Window
             }
         }
 
-        var color = GetLayerColor(layerName ?? "(no layer)");
-        return new Path
+        var detailLayer = layerName ?? "(no layer)";
+        var color = GetLayerColor(detailLayer);
+        var thickness = GetLayerThickness(detailLayer);
+        var detail = new Path
         {
             Data = streamGeometry,
             Stroke = new SolidColorBrush(color),
-            StrokeThickness = 1,
             Fill = null,
             IsHitTestVisible = false
         };
+        ApplyRoundStroke(detail);
+        // Kept at a constant on-screen width while zooming, like the base map lines.
+        baseStrokeWidths[detail] = thickness;
+        detail.StrokeThickness = thickness / Math.Max(mapScale.ScaleX, 0.1);
+        return detail;
     }
 
     private static IEnumerable<LineString> ExtractExteriorRings(NetTopologySuite.Geometries.Geometry geometry)
@@ -1511,13 +2953,27 @@ public partial class MainWindow : Window
     /// </summary>
     private void RotateHandle_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        var shapes = SelectedShapes();
-        if (!isEditMode || selectedEditId is null || shapes.Count == 0)
+        if (!isEditMode || selectedEditId is null || SelectedShapes().Count == 0)
         {
             return;
         }
 
         e.Handled = true;
+        RotateSelected(clockwise: true);
+    }
+
+    /// <summary>
+    /// Turns the whole selection by 90 degrees about the center of its combined bounds: clockwise
+    /// (the gold handle, or the "r" key) or counter-clockwise (Shift+R). Refused, with the usual
+    /// "장비영역 겹침" error, when the turned equipment would overlap another piece of equipment.
+    /// </summary>
+    private void RotateSelected(bool clockwise)
+    {
+        var shapes = SelectedShapes();
+        if (!isEditMode || selectedEditId is null || shapes.Count == 0)
+        {
+            return;
+        }
 
         var allPoints = shapes.SelectMany(s => s.Points).ToArray();
         var centerScreen = new System.Windows.Point(
@@ -1525,19 +2981,27 @@ public partial class MainWindow : Window
             (allPoints.Min(p => p.Y) + allPoints.Max(p => p.Y)) / 2);
         var pivotWorld = UnprojectFromScreen(centerScreen);
 
-        var rotation = AffineTransformation.RotationInstance(-Math.PI / 2, pivotWorld.X, pivotWorld.Y);
+        // World space is counter-clockwise-positive (screen Y is flipped), so clockwise is -90.
+        var ccwDegrees = clockwise ? -90.0 : 90.0;
+        var rotation = AffineTransformation.RotationInstance(ccwDegrees * Math.PI / 180.0, pivotWorld.X, pivotWorld.Y);
+        if (RejectEquipmentOverlap(selectedEditIds, geometry => rotation.Transform(geometry)))
+        {
+            return;
+        }
+
         // Every selected object turns about the shared center, so a group rotates rigidly.
         foreach (var selectedId in selectedEditIds.ToArray())
         {
             var edit = GetOrCreateEdit(selectedId);
             edit.CurrentGeometry = rotation.Transform(edit.CurrentGeometry);
             edit.CurrentOuterGeometry = rotation.Transform(edit.CurrentOuterGeometry);
-            ApplyPlacementRotation(edit, pivotWorld.X, pivotWorld.Y, -90.0);
+            ApplyPlacementRotation(edit, pivotWorld.X, pivotWorld.Y, ccwDegrees);
             edit.HasChanges = true;
         }
 
         RenderEditableLayerObjects();
         SaveEditsButton.IsEnabled = true;
+        EditStatusText.Text = clockwise ? "Rotated 90° clockwise." : "Rotated 90° counter-clockwise.";
     }
 
     private void SnapToGridCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -1686,6 +3150,13 @@ public partial class MainWindow : Window
             if (Math.Abs(worldDx) > 1e-9 || Math.Abs(worldDy) > 1e-9)
             {
                 var translation = AffineTransformation.TranslationInstance(worldDx, worldDy);
+                if (RejectEquipmentOverlap(selectedEditIds, geometry => translation.Transform(geometry)))
+                {
+                    // Dropped on top of another machine: snap back to where it was picked up.
+                    RenderEditableLayerObjects();
+                    return;
+                }
+
                 foreach (var selectedId in selectedEditIds.ToArray())
                 {
                     var moved = GetOrCreateEdit(selectedId);
@@ -1776,6 +3247,123 @@ public partial class MainWindow : Window
         SelectEditableObject(picked[0], keepGroup: true);
     }
 
+    // ------------------------------------------------------------------ equipment overlap rule
+
+    private static bool RectanglesOverlap(Envelope a, Envelope b)
+    {
+        // Touching edges are allowed; only a real overlap area counts.
+        const double tolerance = 1e-6;
+        var width = Math.Min(a.MaxX, b.MaxX) - Math.Max(a.MinX, b.MinX);
+        var height = Math.Min(a.MaxY, b.MaxY) - Math.Max(a.MinY, b.MinY);
+        return width > tolerance && height > tolerance;
+    }
+
+    /// <summary>
+    /// The equipment area of every block object in the edit session (its dashed rectangle),
+    /// using the current, possibly unsaved position and skipping deleted objects.
+    /// </summary>
+    private List<(long Id, Envelope Bounds)> EquipmentAreas(ISet<long>? exclude = null)
+    {
+        var areas = new List<(long, Envelope)>();
+        foreach (var id in editableSourcesById.Keys.Union(pendingEdits.Keys))
+        {
+            if (exclude is not null && exclude.Contains(id))
+            {
+                continue;
+            }
+
+            pendingEdits.TryGetValue(id, out var edit);
+            if (edit is { IsDeleted: true })
+            {
+                continue;
+            }
+
+            var source = GetEditableSource(id);
+            if (source.FeatureType != "block_instance")
+            {
+                continue;
+            }
+
+            areas.Add((id, BlockBounds(edit?.CurrentGeometry ?? source.Geometry, edit?.CurrentOuterGeometry ?? source.OuterGeometry)));
+        }
+
+        return areas;
+    }
+
+    private string DescribeEquipment(long id)
+    {
+        var source = GetEditableSource(id);
+        var name = string.IsNullOrWhiteSpace(source.BlockName) ? "block" : source.BlockName;
+        return id < 0 ? $"{name} (new)" : $"{name} #{(IsEncodedBlockInstanceId(id) ? DecodeBlockInstanceId(id) : id)}";
+    }
+
+    private void ReportEquipmentOverlap(long first, long second, string consequence)
+    {
+        var detail = $"{DescribeEquipment(first)}  <->  {DescribeEquipment(second)}";
+        EditStatusText.Text = $"장비영역 겹침: {detail}";
+        MessageBox.Show(this,
+            "장비영역 겹침" + Environment.NewLine + Environment.NewLine + detail + Environment.NewLine + Environment.NewLine + consequence,
+            "장비영역 겹침", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    /// <summary>
+    /// Equipment cannot overlap. Checks where the moving block objects would end up after
+    /// <paramref name="transform"/> against every other block object; on overlap reports the error
+    /// and returns true so the caller keeps the original position.
+    /// </summary>
+    private bool RejectEquipmentOverlap(IReadOnlyCollection<long> movingIds, Func<NetTopologySuite.Geometries.Geometry, NetTopologySuite.Geometries.Geometry> transform)
+    {
+        var moving = movingIds.ToHashSet();
+        var others = EquipmentAreas(moving);
+        foreach (var id in moving)
+        {
+            var source = GetEditableSource(id);
+            if (source.FeatureType != "block_instance")
+            {
+                continue;
+            }
+
+            pendingEdits.TryGetValue(id, out var edit);
+            var bounds = BlockBounds(
+                transform(edit?.CurrentGeometry ?? source.Geometry),
+                transform(edit?.CurrentOuterGeometry ?? source.OuterGeometry));
+            foreach (var (otherId, otherBounds) in others)
+            {
+                if (RectanglesOverlap(bounds, otherBounds))
+                {
+                    ReportEquipmentOverlap(id, otherId, "설비는 서로 겹칠 수 없어 원래 위치로 되돌렸습니다.");
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Blocks saving when any new or changed equipment still overlaps another one.</summary>
+    private bool HasEquipmentOverlapBeforeSave()
+    {
+        var areas = EquipmentAreas();
+        foreach (var (id, bounds) in areas)
+        {
+            if (!pendingEdits.TryGetValue(id, out var edit) || !(edit.IsNew || edit.HasChanges))
+            {
+                continue;
+            }
+
+            foreach (var (otherId, otherBounds) in areas)
+            {
+                if (otherId != id && RectanglesOverlap(bounds, otherBounds))
+                {
+                    ReportEquipmentOverlap(id, otherId, "겹친 설비를 옮긴 뒤 다시 저장하세요. 저장하지 않았습니다.");
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private PendingLayerEdit GetOrCreateEdit(long id)
     {
         if (!pendingEdits.TryGetValue(id, out var edit))
@@ -1825,7 +3413,7 @@ public partial class MainWindow : Window
         {
             isVertexEditMode = false;
             ClearVertexHandles();
-            VertexEditButton.Content = "Vtx: Off";
+            SetToggleState(VertexEditButton, false);
         }
 
         foreach (var (shapeId, shapes) in editableShapesById)
@@ -1859,10 +3447,10 @@ public partial class MainWindow : Window
         }
 
         PropertyHintText.Text = isMulti
-            ? "Multi-selection: drag any selected shape to move all, click the gold handle to rotate all 90° clockwise.\nCtrl+click toggles an object, drag on empty space to box-select.\nGroup turns the selection into one block."
+            ? "Multi-selection: drag any selected shape to move all, click the gold handle or press r to rotate all 90° clockwise (Shift+R: counter-clockwise).\nCtrl+click toggles an object, drag on empty space to box-select.\nGroup turns the selection into one block."
             : isBlock
-                ? "Block instance: moves, rotates, duplicates and deletes as one object.\nDrag the shape to move it.\nClick the gold handle to rotate 90° clockwise."
-                : "Drag the shape to move it.\nClick the gold handle to rotate 90° clockwise.\nToggle Vertex edit to reshape the outline.";
+                ? "Block instance: moves, rotates, duplicates and deletes as one object.\nDrag the shape to move it.\nr: rotate 90° clockwise, Shift+R: counter-clockwise (or click the gold handle)."
+                : "Drag the shape to move it.\nr: rotate 90° clockwise, Shift+R: counter-clockwise (or click the gold handle).\nToggle Vertex edit to reshape the outline.";
         var shownAttributes = pendingEdits.TryGetValue(id, out var attributeEdit) ? attributeEdit.Attributes : source.Attributes;
         AttributesGrid.ItemsSource = shownAttributes.Select(attribute => new AttributeRow(attribute.Key, attribute.Value)).ToArray();
         DuplicateButton.IsEnabled = true;
@@ -1871,6 +3459,7 @@ public partial class MainWindow : Window
         // Reshaping only the outline would desynchronize it from the block's real geometry.
         VertexEditButton.IsEnabled = !isBlock && !isMulti;
         VertexEditButton.ToolTip = isBlock ? "Vertex edit is not available for block instances" : "Vertex edit";
+        UpdateSelectionCount();
     }
 
     private void DeselectEditableObject()
@@ -1882,10 +3471,11 @@ public partial class MainWindow : Window
 
         selectedEditId = null;
         selectedEditIds.Clear();
+        UpdateSelectionCount();
         RemoveRotateHandle();
         isVertexEditMode = false;
         ClearVertexHandles();
-        VertexEditButton.Content = "Vtx: Off";
+        SetToggleState(VertexEditButton, false);
         VertexEditButton.IsEnabled = false;
         DuplicateButton.IsEnabled = false;
         DeleteObjectButton.IsEnabled = false;
@@ -1937,7 +3527,7 @@ public partial class MainWindow : Window
             Stroke = Brushes.White,
             StrokeThickness = 1,
             Cursor = System.Windows.Input.Cursors.Hand,
-            ToolTip = "Rotate 90° clockwise"
+            ToolTip = "Rotate 90° clockwise (r). Shift+R rotates counter-clockwise."
         };
         Canvas.SetLeft(rotateHandle, handleCenter.X - 6);
         Canvas.SetTop(rotateHandle, handleCenter.Y - 6);
@@ -1970,7 +3560,7 @@ public partial class MainWindow : Window
         }
 
         isVertexEditMode = !isVertexEditMode;
-        VertexEditButton.Content = isVertexEditMode ? "Vtx: On" : "Vtx: Off";
+        SetToggleState(VertexEditButton, isVertexEditMode);
         if (isVertexEditMode)
         {
             RemoveRotateHandle();
@@ -2380,6 +3970,11 @@ public partial class MainWindow : Window
 
     private void DeleteSelected_Click(object sender, RoutedEventArgs e)
     {
+        if (!Require(Permissions.DrawingDelete, "delete drawing objects"))
+        {
+            return;
+        }
+
         if (selectedEditIds.Count == 0)
         {
             return;
@@ -2405,6 +4000,16 @@ public partial class MainWindow : Window
 
     private async void SaveEdits_Click(object sender, RoutedEventArgs e)
     {
+        if (!Require(Permissions.DrawingEdit, "save drawing changes"))
+        {
+            return;
+        }
+
+        if (HasEquipmentOverlapBeforeSave())
+        {
+            return;
+        }
+
         var updates = new List<(long Id, NetTopologySuite.Geometries.Geometry Geometry, NetTopologySuite.Geometries.Geometry OuterGeometry, DateTime ExpectedUpdatedAt, bool IsBlockInstance, IReadOnlyDictionary<string, string?>? Attributes)>();
         var inserts = new List<(EditableLayerObject Source, NetTopologySuite.Geometries.Geometry Geometry, NetTopologySuite.Geometries.Geometry OuterGeometry)>();
         var deletes = new List<(long Id, DateTime ExpectedUpdatedAt, bool IsBlockInstance)>();
@@ -2448,7 +4053,7 @@ public partial class MainWindow : Window
         {
             connectionSettings = ReadConnectionSettingsFromUi();
             await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
-            var conflictIds = await repository.ApplyLayerEditsAsync(updates, inserts, deletes);
+            var conflictIds = await repository.ApplyLayerEditsAsync(updates, inserts, deletes, changeContext: CurrentChangeContext);
             var appliedUpdates = updates.Count - conflictIds.Count(id => updates.Any(u => u.Id == id));
             var appliedDeletes = deletes.Count - conflictIds.Count(id => deletes.Any(d => d.Id == id));
             var summary = $"Saved edits: {appliedUpdates} updated, {inserts.Count} added, {appliedDeletes} deleted.";
@@ -2459,6 +4064,8 @@ public partial class MainWindow : Window
 
             ExitEditMode();
             StatusText.Text = summary;
+            await AuditAsync("drawing.save", "drawing", null,
+                $"{appliedUpdates} updated, {inserts.Count} added, {appliedDeletes} deleted, {conflictIds.Count} conflict(s)");
             await LoadImportedPolygonsAsync();
         }
         catch (PostgresException exception)
@@ -2484,6 +4091,7 @@ public partial class MainWindow : Window
     {
         if (e.Key != System.Windows.Input.Key.Escape || !isEditMode)
         {
+            HandleShortcut(e);
             return;
         }
 
@@ -2539,6 +4147,7 @@ public partial class MainWindow : Window
         mapTranslation.Y = center.Y - actualFactor * (center.Y - mapTranslation.Y);
         mapScale.ScaleX = newScale;
         mapScale.ScaleY = newScale;
+        UpdateZoomText();
         ScheduleStrokeWidthUpdate();
     }
 
@@ -2548,6 +4157,7 @@ public partial class MainWindow : Window
         mapScale.ScaleY = 1;
         mapTranslation.X = 0;
         mapTranslation.Y = 0;
+        UpdateZoomText();
         UpdateStrokeWidths();
     }
 
@@ -2594,6 +4204,11 @@ public partial class MainWindow : Window
 
     private async void ImportDxf_Click(object sender, RoutedEventArgs e)
     {
+        if (!Require(Permissions.ImportDxf, "import DXF data"))
+        {
+            return;
+        }
+
         const string filePath = @"D:\DINNO\DEV\SD2D\data\SmartLayout.dxf";
         importCts = new CancellationTokenSource();
         var cancellationToken = importCts.Token;
@@ -2653,7 +4268,7 @@ public partial class MainWindow : Window
 
                 ShowBusy("Deleting previous layers and block instances...");
                 StatusText.Text = "Deleting previous layers and block instances...";
-                await repository.DeleteImportedFileAsync(filePath, cancellationToken);
+                await repository.DeleteImportedFileAsync(filePath, cancellationToken, CurrentChangeContext);
             }
 
             BusyProgressBar.IsIndeterminate = false;
@@ -2671,7 +4286,8 @@ public partial class MainWindow : Window
                 instances.Select(instance => (instance.BlockName, instance.Layer, instance.ActualGeometry, instance.OuterGeometry, instance.Attributes)).ToArray(),
                 filePath,
                 progress,
-                cancellationToken);
+                cancellationToken,
+                CurrentChangeContext);
             writeStopwatch.Stop();
 
             var databaseCounts = await repository.FindImportedCountsAsync(filePath, cancellationToken);
@@ -2683,6 +4299,8 @@ public partial class MainWindow : Window
             StatusText.Text = singleLayer
                 ? $"Imported {instances.Count} Equipment block object(s) into PostgreSQL in {totalStopwatch.ElapsedMilliseconds:N0} ms."
                 : $"Imported {blocks.Count} layer(s) ({equipmentBoundingBoxes.Count} Equipment-poly) and {instances.Count} block instance(s) into PostgreSQL in {totalStopwatch.ElapsedMilliseconds:N0} ms.";
+            await AuditAsync("dxf.import", "dxf", filePath,
+                singleLayer ? $"{instances.Count} Equipment block object(s)" : $"{blocks.Count} layer(s), {instances.Count} block instance(s)");
         }
         catch (OperationCanceledException)
         {
@@ -2705,7 +4323,7 @@ public partial class MainWindow : Window
         {
             HideBusy();
             BusyProgressBar.IsIndeterminate = true;
-            ImportButton.IsEnabled = true;
+            ImportButton.IsEnabled = CanImport;
             CancelImportButton.IsEnabled = false;
             importCts?.Dispose();
             importCts = null;
@@ -2721,6 +4339,11 @@ public partial class MainWindow : Window
 
     private async void DeleteImportedDxf_Click(object sender, RoutedEventArgs e)
     {
+        if (!Require(Permissions.ImportDxf, "delete imported DXF data"))
+        {
+            return;
+        }
+
         const string filePath = @"D:\DINNO\DEV\SD2D\data\SmartLayout.dxf";
         try
         {
@@ -2749,7 +4372,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            await repository.DeleteImportedFileAsync(filePath);
+            await repository.DeleteImportedFileAsync(filePath, changeContext: CurrentChangeContext);
             importLogger.Write($"DELETE source={filePath} result=deleted-all-layers-and-instances");
             MapLayerCanvas.Children.Clear();
             importedFeatures.Clear();
@@ -2763,6 +4386,7 @@ public partial class MainWindow : Window
             selectedFeature = null;
             LayersPanel.Children.Clear();
             StatusText.Text = "All imported SmartLayout.dxf layers and block objects were deleted.";
+            await AuditAsync("dxf.delete", "dxf", filePath, "all layers and block objects");
         }
         catch (Exception exception)
         {
@@ -2841,54 +4465,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void SaveConnection_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            connectionSettings = ReadConnectionSettingsFromUi();
-            await connectionSettings.SaveAsync();
-            StatusText.Text = $"Connection JSON saved: {PostgresConnectionSettings.DefaultFilePath}";
-        }
-        catch (Exception exception)
-        {
-            StatusText.Text = $"Could not save connection settings: {exception.Message}";
-        }
-    }
-
-    private async void TestConnection_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            connectionSettings = ReadConnectionSettingsFromUi();
-            if (string.IsNullOrWhiteSpace(connectionSettings.Password))
-            {
-                throw new InvalidOperationException("PostgreSQL password is empty.");
-            }
-
-            StatusText.Text = "Testing PostgreSQL connection...";
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
-            StatusText.Text = await repository.TestConnectionAsync();
-        }
-        catch (Exception exception)
-        {
-            StatusText.Text = $"Connection failed: {exception.Message}";
-        }
-    }
-
-    private PostgresConnectionSettings ReadConnectionSettingsFromUi()
-    {
-        if (!int.TryParse(PortTextBox.Text, out var port) || port is < 1 or > 65535)
-        {
-            throw new FormatException("Port must be a number between 1 and 65535.");
-        }
-
-        return new PostgresConnectionSettings
-        {
-            Host = HostTextBox.Text.Trim(),
-            Port = port,
-            Database = DatabaseTextBox.Text.Trim(),
-            Username = UsernameTextBox.Text.Trim(),
-            Password = PasswordInput.Password
-        };
-    }
+    /// <summary>The connection is edited in the server window; other flows just use the current settings.</summary>
+    private PostgresConnectionSettings ReadConnectionSettingsFromUi() => connectionSettings;
 }

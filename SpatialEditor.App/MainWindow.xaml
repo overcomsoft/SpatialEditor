@@ -1,124 +1,380 @@
-﻿<Window x:Class="SpatialEditor.App.MainWindow"
+<Window x:Class="SpatialEditor.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SpatialEditor.App"
         mc:Ignorable="d"
-        Title="Spatial Editor" Height="600" Width="1000" Background="#F4F6F8"
+        Title="OmniDT SE (Spatial Editor)" Height="780" Width="1280" Background="#F4F6F8"
         PreviewKeyDown="Window_PreviewKeyDown">
     <DockPanel>
-        <Border DockPanel.Dock="Top" Background="#1F2933" Padding="14">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="SPATIAL EDITOR" Foreground="White" FontSize="18" FontWeight="SemiBold" />
-                <TextBlock Text="  |  EPSG:5186  |  Local preview" Foreground="#B8C4CE" Margin="14,3,0,0" />
-            </StackPanel>
-        </Border>
-        <Border DockPanel.Dock="Top" Background="White" BorderBrush="#D7DEE5" BorderThickness="0,0,0,1" Padding="8">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                <StackPanel Orientation="Horizontal">
-                    <Button Content="Zoom in" Padding="10,5" Margin="0,0,4,0" Click="ZoomIn_Click" ToolTip="Zoom in" />
-                    <Button Content="Zoom out" Padding="10,5" Margin="0,0,4,0" Click="ZoomOut_Click" ToolTip="Zoom out" />
-                    <Button Content="Fit" Padding="10,5" Margin="0,0,4,0" Click="FitView_Click" ToolTip="Fit to imported data" />
-                    <Button Content="Reset" Padding="10,5" Margin="0,0,4,0" Click="ResetView_Click" ToolTip="Reset view" />
+        <!-- ============================== Menu bar ============================== -->
+        <Menu DockPanel.Dock="Top" Background="#F4F6F8" BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="2,1">
+            <MenuItem Header="_File">
+                <MenuItem Header="Connect to _server..." Click="ConnectServer_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Server}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="_Import DXF" Click="ImportDxf_Click" IsEnabled="{Binding IsEnabled, ElementName=ImportButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Import}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Cancel import" Click="CancelImport_Click" IsEnabled="{Binding IsEnabled, ElementName=CancelImportButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Cancel}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Delete imported DXF" Click="DeleteImportedDxf_Click" IsEnabled="{Binding IsEnabled, ElementName=DeleteImportButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.DeleteDxf}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="E_xit" Click="ExitApp_Click" />
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Edit mode" Click="ToggleEditMode_Click" IsEnabled="{Binding IsEnabled, ElementName=EditModeButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Edit}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Save changes" InputGestureText="Ctrl+S" Click="SaveEdits_Click" IsEnabled="{Binding IsEnabled, ElementName=SaveEditsButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Save}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Discard changes" Click="DiscardEdits_Click" IsEnabled="{Binding IsEnabled, ElementName=DiscardEditsButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Discard}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="D_uplicate" InputGestureText="Ctrl+D" Click="DuplicateSelected_Click" IsEnabled="{Binding IsEnabled, ElementName=DuplicateButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Duplicate}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="De_lete object" InputGestureText="Del" Click="DeleteSelected_Click" IsEnabled="{Binding IsEnabled, ElementName=DeleteObjectButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.DeleteObject}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Group into block" InputGestureText="Ctrl+G" Click="GroupSelected_Click" IsEnabled="{Binding IsEnabled, ElementName=GroupButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Group}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Vertex edit" Click="ToggleVertexEdit_Click" IsEnabled="{Binding IsEnabled, ElementName=VertexEditButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Vertex}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="S_nap to 10 mm grid" IsCheckable="True" IsChecked="{Binding IsChecked, ElementName=SnapToGridCheckBox, Mode=TwoWay}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Snap}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_View">
+                <MenuItem Header="Zoom _in" Click="ZoomIn_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.ZoomIn}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Zoom _out" Click="ZoomOut_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.ZoomOut}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Zoom to _full extent" InputGestureText="F" Click="FitView_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Fit}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Reset view" Click="ResetView_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Reset}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem x:Name="LeftPanelMenuItem" Header="_Layers panel" IsCheckable="True" IsChecked="True"
+                          Checked="LeftPanelMenu_Changed" Unchecked="LeftPanelMenu_Changed" />
+                <MenuItem x:Name="RightPanelMenuItem" Header="_Properties panel" IsCheckable="True" IsChecked="True"
+                          Checked="RightPanelMenu_Changed" Unchecked="RightPanelMenu_Changed" />
+                <MenuItem x:Name="StatusBarMenuItem" Header="_Status bar" IsCheckable="True" IsChecked="True"
+                          Checked="StatusBarMenu_Changed" Unchecked="StatusBarMenu_Changed" />
+            </MenuItem>
+            <MenuItem Header="_Layer">
+                <MenuItem Header="_Load layers..." Click="LoadLayers_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Layers}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Refresh layers" Click="RefreshLayers_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Refresh}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Layer _style..." Click="SelectedLayerStyle_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Style}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Zoom to selected layer" Click="SelectedLayerZoom_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Fit}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Edit selected layer" Click="SelectedLayerEdit_Click" IsEnabled="{Binding IsEnabled, ElementName=EditModeButton}">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Edit}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="Show _all layers" Click="ShowAllLayers_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.ShowAll}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="_Hide all layers" Click="HideAllLayers_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.HideAll}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Tools">
+                <MenuItem Header="_Validate geometry" Click="Validate_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Validate}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Add _point" Click="AddPoint_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.AddPoint}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem x:Name="LibraryMenuItem" Header="Block _library..." Click="OpenLibrary_Click" IsEnabled="False">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Layers}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem x:Name="RegisterLibraryMenuItem" Header="_Register selected block in library..." Click="RegisterInLibrary_Click" IsEnabled="False">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Group}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Admin">
+                <MenuItem x:Name="UsersMenuItem" Header="_User management..." Click="ManageUsers_Click" IsEnabled="False">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Users}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem x:Name="PasswordMenuItem" Header="Change my _password..." Click="ChangePassword_Click" IsEnabled="False">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Key}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem x:Name="LogoutMenuItem" Header="_Log in" Click="Logout_Click" IsEnabled="False">
+                    <MenuItem.Icon><Image x:Name="LogoutMenuIcon" Source="{StaticResource Icon.Login}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+            <MenuItem Header="_Help">
+                <MenuItem Header="_About OmniDT SE" Click="About_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.About}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+        </Menu>
 
-                    <Border Width="1" Background="#D7DEE5" Margin="6,2" />
+        <!-- ============================== Icon toolbar ============================== -->
+        <Border DockPanel.Dock="Top" Background="#F9FAFB" BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="4,2">
+            <WrapPanel Orientation="Horizontal">
+                <Button x:Name="ServerButton" Style="{StaticResource IconButton}" Click="ConnectServer_Click" ToolTip="Connect to server...">
+                    <Image Source="{StaticResource Icon.Server}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="ImportButton" Style="{StaticResource IconButton}" Click="ImportDxf_Click" IsEnabled="False" ToolTip="Import DXF (SmartLayout.dxf)">
+                    <Image Source="{StaticResource Icon.Import}" Width="24" Height="24" />
+                </Button>
+                <ToggleButton x:Name="SingleLayerImportCheckBox" Style="{StaticResource IconToggleButton}" ToolTip="Equipment only: import just the Equipment INSERTs as block objects">
+                    <Image Source="{StaticResource Icon.EquipOnly}" Width="24" Height="24" />
+                </ToggleButton>
+                <Button x:Name="CancelImportButton" Style="{StaticResource IconButton}" Click="CancelImport_Click" IsEnabled="False" ToolTip="Cancel import">
+                    <Image Source="{StaticResource Icon.Cancel}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="DeleteImportButton" Style="{StaticResource IconButton}" Click="DeleteImportedDxf_Click" IsEnabled="False" ToolTip="Delete imported DXF data">
+                    <Image Source="{StaticResource Icon.DeleteDxf}" Width="24" Height="24" />
+                </Button>
 
-                    <Button x:Name="ImportButton" Content="Import" Padding="10,5" Margin="0,0,4,0" Click="ImportDxf_Click" IsEnabled="False" ToolTip="Import SmartLayout.dxf" />
-                    <CheckBox x:Name="SingleLayerImportCheckBox" Content="Equip only" VerticalAlignment="Center" Margin="0,0,8,0" ToolTip="Import only the Equipment INSERTs (126) as block objects" />
-                    <Button x:Name="CancelImportButton" Content="Cancel" Padding="10,5" Margin="0,0,4,0" Click="CancelImport_Click" IsEnabled="False" ToolTip="Cancel import" />
-                    <Button x:Name="DeleteImportButton" Content="Del DXF" Padding="10,5" Margin="0,0,4,0" Click="DeleteImportedDxf_Click" IsEnabled="False" ToolTip="Delete imported DXF data" />
-                    <Button Content="Add Pt" Padding="10,5" Margin="0,0,4,0" Click="AddPoint_Click" ToolTip="Add point" />
-                    <Button Content="Validate" Padding="10,5" Margin="0,0,4,0" Click="Validate_Click" ToolTip="Validate geometry" />
+                <Border Style="{StaticResource ToolbarSeparator}" />
 
-                    <Border Width="1" Background="#D7DEE5" Margin="6,2" />
+                <Button Style="{StaticResource IconButton}" Click="ZoomIn_Click" ToolTip="Zoom in (mouse wheel)">
+                    <Image Source="{StaticResource Icon.ZoomIn}" Width="24" Height="24" />
+                </Button>
+                <Button Style="{StaticResource IconButton}" Click="ZoomOut_Click" ToolTip="Zoom out (mouse wheel)">
+                    <Image Source="{StaticResource Icon.ZoomOut}" Width="24" Height="24" />
+                </Button>
+                <Button Style="{StaticResource IconButton}" Click="FitView_Click" ToolTip="Zoom to full extent (F)">
+                    <Image Source="{StaticResource Icon.Fit}" Width="24" Height="24" />
+                </Button>
+                <Button Style="{StaticResource IconButton}" Click="ResetView_Click" ToolTip="Reset view">
+                    <Image Source="{StaticResource Icon.Reset}" Width="24" Height="24" />
+                </Button>
 
-                    <Button x:Name="EditModeButton" Content="Edit" Padding="10,5" Margin="0,0,4,0" Click="ToggleEditMode_Click" IsEnabled="False" ToolTip="Enter/exit edit mode (all layers)" />
-                    <Button x:Name="DuplicateButton" Content="Dup" Padding="10,5" Margin="0,0,4,0" Click="DuplicateSelected_Click" IsEnabled="False" ToolTip="Duplicate selected object" />
-                    <Button x:Name="DeleteObjectButton" Content="Del Obj" Padding="10,5" Margin="0,0,4,0" Click="DeleteSelected_Click" IsEnabled="False" ToolTip="Delete selected object" />
-                    <Button x:Name="GroupButton" Content="Group" Padding="10,5" Margin="0,0,4,0" Click="GroupSelected_Click" IsEnabled="False" ToolTip="Group the selected objects into one block (select several with Ctrl+click or a selection box)" />
-                    <Button x:Name="VertexEditButton" Content="Vtx: Off" Padding="10,5" Margin="0,0,4,0" Click="ToggleVertexEdit_Click" IsEnabled="False" ToolTip="Toggle vertex edit" />
-                    <CheckBox x:Name="SnapToGridCheckBox" Content="Snap 10mm" VerticalAlignment="Center" Margin="4,0,8,0"
+                <Border Style="{StaticResource ToolbarSeparator}" />
+
+                <Button Style="{StaticResource IconButton}" Click="DeselectAll_Click" ToolTip="Deselect all">
+                    <Image Source="{StaticResource Icon.Deselect}" Width="24" Height="24" />
+                </Button>
+
+                <Border Style="{StaticResource ToolbarSeparator}" />
+
+                <Button x:Name="EditModeButton" Style="{StaticResource IconButton}" Click="ToggleEditMode_Click" IsEnabled="False" ToolTip="Edit mode (all layers)">
+                    <Image Source="{StaticResource Icon.Edit}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="SaveEditsButton" Style="{StaticResource IconButton}" Click="SaveEdits_Click" IsEnabled="False" ToolTip="Save changes (Ctrl+S)">
+                    <Image Source="{StaticResource Icon.Save}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="DiscardEditsButton" Style="{StaticResource IconButton}" Click="DiscardEdits_Click" IsEnabled="False" ToolTip="Discard changes and leave edit mode">
+                    <Image Source="{StaticResource Icon.Discard}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="DuplicateButton" Style="{StaticResource IconButton}" Click="DuplicateSelected_Click" IsEnabled="False" ToolTip="Duplicate selected (Ctrl+D)">
+                    <Image Source="{StaticResource Icon.Duplicate}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="DeleteObjectButton" Style="{StaticResource IconButton}" Click="DeleteSelected_Click" IsEnabled="False" ToolTip="Delete selected (Del)">
+                    <Image Source="{StaticResource Icon.DeleteObject}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="GroupButton" Style="{StaticResource IconButton}" Click="GroupSelected_Click" IsEnabled="False"
+                        ToolTip="Group the selected objects into one block (Ctrl+G). Select several with Ctrl+click or a selection box.">
+                    <Image Source="{StaticResource Icon.Group}" Width="24" Height="24" />
+                </Button>
+                <Button x:Name="VertexEditButton" Style="{StaticResource IconButton}" Click="ToggleVertexEdit_Click" IsEnabled="False" ToolTip="Vertex edit">
+                    <Image Source="{StaticResource Icon.Vertex}" Width="24" Height="24" />
+                </Button>
+                <ToggleButton x:Name="SnapToGridCheckBox" Style="{StaticResource IconToggleButton}"
                               Checked="SnapToGridCheckBox_Changed" Unchecked="SnapToGridCheckBox_Changed"
-                              ToolTip="Snap moved/duplicated objects to a 10mm grid" />
-                    <Button x:Name="SaveEditsButton" Content="Save" Padding="10,5" Margin="0,0,4,0" Click="SaveEdits_Click" IsEnabled="False" ToolTip="Save changes" />
-                    <Button x:Name="DiscardEditsButton" Content="Discard" Padding="10,5" Margin="0,0,10,0" Click="DiscardEdits_Click" IsEnabled="False" ToolTip="Discard changes" />
+                              ToolTip="Snap moved/duplicated objects to a 10 mm grid">
+                    <Image Source="{StaticResource Icon.Snap}" Width="24" Height="24" />
+                </ToggleButton>
 
-                    <TextBlock Text="Scroll: zoom  |  Middle drag: pan  |  Click: select" Foreground="#52606D" VerticalAlignment="Center" Margin="8,0,0,0" />
-                </StackPanel>
-            </ScrollViewer>
+                <Border Style="{StaticResource ToolbarSeparator}" />
+
+                <Button Style="{StaticResource IconButton}" Click="Validate_Click" ToolTip="Validate the selected geometry">
+                    <Image Source="{StaticResource Icon.Validate}" Width="24" Height="24" />
+                </Button>
+                <Button Style="{StaticResource IconButton}" Click="AddPoint_Click" ToolTip="Add point">
+                    <Image Source="{StaticResource Icon.AddPoint}" Width="24" Height="24" />
+                </Button>
+            </WrapPanel>
         </Border>
-        <Grid Margin="18">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220" MinWidth="160" />
-                <ColumnDefinition Width="6" />
-                <ColumnDefinition Width="*" MinWidth="320" />
-                <ColumnDefinition Width="6" />
-                <ColumnDefinition Width="240" MinWidth="180" />
-            </Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="White" BorderBrush="#D7DEE5" BorderThickness="1" Padding="14">
-                <StackPanel>
-                    <TextBlock Text="PostgreSQL connection" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock Text="Host" Margin="0,14,0,3" />
-                    <TextBox x:Name="HostTextBox" />
-                    <TextBlock Text="Port" Margin="0,8,0,3" />
-                    <TextBox x:Name="PortTextBox" />
-                    <TextBlock Text="Database" Margin="0,8,0,3" />
-                    <TextBox x:Name="DatabaseTextBox" />
-                    <TextBlock Text="Username" Margin="0,8,0,3" />
-                    <TextBox x:Name="UsernameTextBox" />
-                    <TextBlock Text="Password" Margin="0,8,0,3" />
-                    <PasswordBox x:Name="PasswordInput" />
-                    <Button Content="Save connection JSON" Margin="0,12,0,0" Click="SaveConnection_Click" />
-                    <Button Content="Test PostgreSQL connection" Margin="0,8,0,0" Click="TestConnection_Click" />
-                    <Separator Margin="0,18" />
-                    <TextBlock Text="Layers" FontSize="16" FontWeight="SemiBold" />
-                    <StackPanel x:Name="LayersPanel" Margin="0,12,0,0" />
-                    <Separator Margin="0,20" />
-                    <TextBlock x:Name="EditStatusText" Foreground="#52606D" TextWrapping="Wrap" />
-                    <TextBlock x:Name="StatusText" Text="Ready" Foreground="#52606D" TextWrapping="Wrap" Margin="0,10,0,0" />
+
+        <!-- ============================== Status bar ============================== -->
+        <StatusBar x:Name="MainStatusBar" DockPanel.Dock="Bottom" Background="#EEF2F6" BorderBrush="#D0D7DE" BorderThickness="0,1,0,0"
+                   FontSize="12" Foreground="#37474F">
+            <StatusBar.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <DockPanel LastChildFill="True" />
+                </ItemsPanelTemplate>
+            </StatusBar.ItemsPanel>
+            <StatusBarItem DockPanel.Dock="Left">
+                <StackPanel Orientation="Horizontal" Cursor="Hand" MouseLeftButtonUp="StatusConnection_Click"
+                            ToolTip="Server connection (click to change)">
+                    <Ellipse x:Name="ConnectionDot" Width="10" Height="10" Fill="#B0BEC5" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ConnectionSummaryText" Text="Not connected" />
                 </StackPanel>
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Left" />
+            <StatusBarItem DockPanel.Dock="Left">
+                <TextBlock x:Name="UserSummaryText" Text="Not logged in" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Left" />
+            <StatusBarItem DockPanel.Dock="Left">
+                <TextBlock x:Name="SyncStatusText" Text="" Cursor="Hand" MouseLeftButtonUp="SyncStatus_Click"
+                           ToolTip="다른 사용자가 저장한 변경을 확인합니다 (클릭)" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Left" />
+
+            <StatusBarItem DockPanel.Dock="Right">
+                <TextBlock x:Name="BuildText" Foreground="#52606D" ToolTip="Development build number (build date and time)" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" />
+            <StatusBarItem DockPanel.Dock="Right">
+                <TextBlock Text="EPSG:5186" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" />
+            <StatusBarItem DockPanel.Dock="Right">
+                <TextBlock x:Name="SelectionCountText" Text="Selected: 0" MinWidth="76" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" />
+            <StatusBarItem DockPanel.Dock="Right">
+                <TextBlock x:Name="ZoomText" Text="100%" MinWidth="44" TextAlignment="Right" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" />
+            <StatusBarItem DockPanel.Dock="Right">
+                <TextBlock x:Name="CursorCoordText" Text="X -    Y -" MinWidth="230" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" />
+
+            <StatusBarItem>
+                <DockPanel LastChildFill="True">
+                    <StackPanel x:Name="BusyOverlay" DockPanel.Dock="Left" Orientation="Horizontal" Visibility="Collapsed" Margin="0,0,12,0">
+                        <ProgressBar x:Name="BusyProgressBar" IsIndeterminate="True" Width="150" Height="10" VerticalAlignment="Center" />
+                        <TextBlock x:Name="BusyText" Text="Loading..." Margin="8,0,0,0" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <TextBlock x:Name="EditStatusText" DockPanel.Dock="Left" Foreground="#1565C0" Margin="0,0,12,0"
+                               TextTrimming="CharacterEllipsis" MaxWidth="460"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                    <TextBlock x:Name="StatusText" Text="Ready" TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
+                </DockPanel>
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- ============================== Work area ============================== -->
+        <Grid Margin="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftColumn" Width="250" MinWidth="170" />
+                <ColumnDefinition x:Name="LeftSplitColumn" Width="6" />
+                <ColumnDefinition Width="*" MinWidth="320" />
+                <ColumnDefinition x:Name="RightSplitColumn" Width="6" />
+                <ColumnDefinition x:Name="RightColumn" Width="260" MinWidth="180" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Layers panel -->
+            <Border x:Name="LeftPanel" Grid.Column="0" Background="White" BorderBrush="#D0D7DE" BorderThickness="1">
+                <DockPanel>
+                    <!-- Overview map: whole drawing with the current view as a rectangle -->
+                    <Border x:Name="MiniMapBorder" DockPanel.Dock="Top" Height="170" Background="#EAF0F6"
+                            BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="4" Cursor="Hand"
+                            ToolTip="Overview: click or drag to move the view"
+                            MouseLeftButtonDown="MiniMap_MouseDown" MouseMove="MiniMap_MouseMove"
+                            MouseLeftButtonUp="MiniMap_MouseUp" SizeChanged="MiniMap_SizeChanged">
+                        <Viewbox x:Name="MiniMapBox" Stretch="Uniform">
+                            <Canvas x:Name="MiniMapCanvas" Width="100" Height="100" Background="White" ClipToBounds="True">
+                                <Canvas x:Name="MiniMapShapes" IsHitTestVisible="False" />
+                                <Rectangle x:Name="MiniMapViewport" Stroke="#E53935" Fill="#22E53935"
+                                           IsHitTestVisible="False" Visibility="Collapsed" />
+                            </Canvas>
+                        </Viewbox>
+                    </Border>
+                    <Border DockPanel.Dock="Top" Style="{StaticResource PanelHeader}">
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Button Style="{StaticResource MiniIconButton}" Click="LoadLayers_Click" ToolTip="Load layers... (choose which layers to fetch)">
+                                    <Image Source="{StaticResource Icon.Layers}" Width="18" Height="18" />
+                                </Button>
+                                <Button Style="{StaticResource MiniIconButton}" Click="RefreshLayers_Click" ToolTip="Refresh layers from the database">
+                                    <Image Source="{StaticResource Icon.Refresh}" Width="18" Height="18" />
+                                </Button>
+                                <Button Style="{StaticResource MiniIconButton}" Click="ShowAllLayers_Click" ToolTip="Show all layers">
+                                    <Image Source="{StaticResource Icon.ShowAll}" Width="18" Height="18" />
+                                </Button>
+                                <Button Style="{StaticResource MiniIconButton}" Click="HideAllLayers_Click" ToolTip="Hide all layers">
+                                    <Image Source="{StaticResource Icon.HideAll}" Width="18" Height="18" />
+                                </Button>
+                            </StackPanel>
+                            <TextBlock Text="Layers" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="LayersPanel" Margin="4" />
+                    </ScrollViewer>
+                </DockPanel>
             </Border>
-            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            <GridSplitter x:Name="LeftSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                           Background="#D7DEE5" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />
-            <Border Grid.Column="2" Background="White" BorderBrush="#D7DEE5" BorderThickness="1">
+
+            <!-- Map -->
+            <Border Grid.Column="2" Background="White" BorderBrush="#D0D7DE" BorderThickness="1">
                 <Canvas x:Name="MapCanvas" ClipToBounds="True" Background="#FAFBFC"
                         MouseWheel="MapCanvas_MouseWheel"
                         MouseDown="MapCanvas_MouseDown"
                         MouseMove="MapCanvas_MouseMove"
+                        MouseLeave="MapCanvas_MouseLeave"
                         MouseUp="MapCanvas_MouseUp">
                     <Canvas x:Name="MapLayerCanvas" />
                     <Canvas x:Name="EditableObjectsCanvas" />
                 </Canvas>
             </Border>
-            <Border x:Name="BusyOverlay" Grid.Column="2" Background="#AAFFFFFF" Visibility="Collapsed">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="240">
-                    <ProgressBar x:Name="BusyProgressBar" IsIndeterminate="True" Height="10" />
-                    <TextBlock x:Name="BusyText" Text="Loading..." Margin="0,10,0,0" HorizontalAlignment="Center" Foreground="#1F2933" FontWeight="SemiBold" />
-                </StackPanel>
-            </Border>
-            <GridSplitter Grid.Column="3" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+            <!-- Swallows input on the map while a long operation runs -->
+            <Border x:Name="InputBlocker" Grid.Column="2" Background="#10FFFFFF" Visibility="Collapsed" />
+
+            <GridSplitter x:Name="RightSplitter" Grid.Column="3" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                           Background="#D7DEE5" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />
-            <Border Grid.Column="4" Background="White" BorderBrush="#D7DEE5" BorderThickness="1" Padding="14">
+
+            <!-- Properties panel -->
+            <Border x:Name="RightPanel" Grid.Column="4" Background="White" BorderBrush="#D0D7DE" BorderThickness="1">
                 <DockPanel>
-                    <TextBlock DockPanel.Dock="Top" Text="Object properties" FontSize="16" FontWeight="SemiBold" />
-                    <TextBlock x:Name="SelectedObjectText" DockPanel.Dock="Top" Text="No object selected" Foreground="#52606D" TextWrapping="Wrap" Margin="0,18,0,0" />
-                    <Separator DockPanel.Dock="Top" Margin="0,18,0,10" />
-                    <TextBlock x:Name="PropertySummaryText" DockPanel.Dock="Top" Foreground="#263238" TextWrapping="Wrap" Margin="0,0,0,10" />
-                    <TextBlock x:Name="PropertyHintText" DockPanel.Dock="Top" Foreground="#52606D" TextWrapping="Wrap" FontStyle="Italic" Margin="0,0,0,10" />
-                    <TextBlock DockPanel.Dock="Top" Text="Attributes" FontWeight="SemiBold" Margin="0,0,0,6" />
-                    <DataGrid x:Name="AttributesGrid" AutoGenerateColumns="False" IsReadOnly="True"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              CanUserAddRows="False" CanUserDeleteRows="False" CanUserReorderColumns="False"
-                              CanUserResizeRows="False" RowHeaderWidth="0" SelectionMode="Single"
-                              Background="White" BorderThickness="1" BorderBrush="#D7DEE5"
-                              AlternatingRowBackground="#F4F6F8" VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Auto">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="*" />
-                            <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="1.4*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <Border DockPanel.Dock="Top" Style="{StaticResource PanelHeader}" Height="32">
+                        <TextBlock Text="Object properties" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </Border>
+                    <DockPanel Margin="10">
+                        <TextBlock x:Name="SelectedObjectText" DockPanel.Dock="Top" Text="No object selected" Foreground="#52606D" TextWrapping="Wrap" />
+                        <Separator DockPanel.Dock="Top" Margin="0,10,0,8" />
+                        <TextBlock x:Name="PropertySummaryText" DockPanel.Dock="Top" Foreground="#263238" TextWrapping="Wrap" Margin="0,0,0,8" />
+                        <TextBlock x:Name="PropertyHintText" DockPanel.Dock="Top" Foreground="#52606D" TextWrapping="Wrap" FontStyle="Italic" Margin="0,0,0,8" />
+                        <TextBlock DockPanel.Dock="Top" Text="Attributes" FontWeight="SemiBold" Margin="0,0,0,6" />
+                        <DataGrid x:Name="AttributesGrid" AutoGenerateColumns="False" IsReadOnly="True"
+                                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                                  CanUserAddRows="False" CanUserDeleteRows="False" CanUserReorderColumns="False"
+                                  CanUserResizeRows="False" RowHeaderWidth="0" SelectionMode="Single"
+                                  Background="White" BorderThickness="1" BorderBrush="#D0D7DE"
+                                  AlternatingRowBackground="#F4F6F8" VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="*" />
+                                <DataGridTextColumn Header="Value" Binding="{Binding Value}" Width="1.4*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
                 </DockPanel>
             </Border>
         </Grid>

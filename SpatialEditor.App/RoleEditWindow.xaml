@@ -1,0 +1,22 @@
+<Window x:Class="SpatialEditor.App.RoleEditWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Role" Height="560" Width="420"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#F4F6F8">
+    <DockPanel Margin="18">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="OK" Padding="20,5" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click" />
+            <Button Content="Cancel" Padding="20,5" IsCancel="True" />
+        </StackPanel>
+        <StackPanel>
+            <TextBlock Text="Role name" Margin="0,0,0,3" />
+            <TextBox x:Name="NameTextBox" />
+            <TextBlock Text="Description" Margin="0,8,0,3" />
+            <TextBox x:Name="DescriptionTextBox" />
+            <TextBlock Text="Permissions" FontWeight="SemiBold" Margin="0,12,0,4" />
+            <Border BorderBrush="#D7DEE5" BorderThickness="1" Background="White" Padding="8">
+                <StackPanel x:Name="PermissionsPanel" />
+            </Border>
+        </StackPanel>
+    </DockPanel>
+</Window>

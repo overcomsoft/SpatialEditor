@@ -1,0 +1,91 @@
+<Window x:Class="SpatialEditor.App.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="OmniDT SE - Log in" Height="440" Width="560"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" Background="#12315C">
+    <Grid>
+        <!-- Background artwork: blueprint of an equipment plan being edited (same motif as the app icon) -->
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Color="#2A6CB8" Offset="0" />
+                <GradientStop Color="#12315C" Offset="1" />
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <Rectangle>
+            <Rectangle.Fill>
+                <DrawingBrush TileMode="Tile" Viewport="0,0,28,28" ViewportUnits="Absolute" Viewbox="0,0,28,28" ViewboxUnits="Absolute">
+                    <DrawingBrush.Drawing>
+                        <GeometryDrawing Geometry="M0,0 L28,0 M0,0 L0,28">
+                            <GeometryDrawing.Pen>
+                                <Pen Brush="#26FFFFFF" Thickness="1" />
+                            </GeometryDrawing.Pen>
+                        </GeometryDrawing>
+                    </DrawingBrush.Drawing>
+                </DrawingBrush>
+            </Rectangle.Fill>
+        </Rectangle>
+
+        <Viewbox Stretch="UniformToFill" Opacity="0.55" IsHitTestVisible="False">
+            <Canvas Width="560" Height="440">
+                <!-- equipment body -->
+                <Rectangle Canvas.Left="70" Canvas.Top="70" Width="260" Height="190" RadiusX="6" RadiusY="6"
+                           Stroke="#E6F1FF" StrokeThickness="4" Fill="#1AFFFFFF" />
+                <Rectangle Canvas.Left="90" Canvas.Top="90" Width="220" Height="150" Stroke="#99E6F1FF" StrokeThickness="1.5" />
+                <!-- fan -->
+                <Ellipse Canvas.Left="125" Canvas.Top="115" Width="100" Height="100" Stroke="#E6F1FF" StrokeThickness="3" />
+                <Ellipse Canvas.Left="165" Canvas.Top="155" Width="20" Height="20" Fill="#E6F1FF" />
+                <Path Stroke="#E6F1FF" StrokeThickness="3" Data="M175,165 L175,120 M175,165 L214,188 M175,165 L136,188" />
+                <!-- ports -->
+                <Rectangle Canvas.Left="330" Canvas.Top="110" Width="36" Height="16" Stroke="#E6F1FF" StrokeThickness="3" />
+                <Rectangle Canvas.Left="330" Canvas.Top="205" Width="36" Height="16" Stroke="#E6F1FF" StrokeThickness="3" />
+                <Rectangle Canvas.Left="250" Canvas.Top="260" Width="16" Height="30" Stroke="#E6F1FF" StrokeThickness="3" />
+                <!-- selection handles -->
+                <Rectangle Canvas.Left="62" Canvas.Top="62" Width="16" Height="16" Fill="#FFC53D" />
+                <Rectangle Canvas.Left="322" Canvas.Top="62" Width="16" Height="16" Fill="#FFC53D" />
+                <Rectangle Canvas.Left="62" Canvas.Top="252" Width="16" Height="16" Fill="#FFC53D" />
+                <Rectangle Canvas.Left="322" Canvas.Top="252" Width="16" Height="16" Fill="#FFC53D" />
+                <!-- dimension line -->
+                <Path Stroke="#FFC53D" StrokeThickness="3" Data="M70,320 L330,320 M70,308 L70,332 M330,308 L330,332 M70,320 L88,312 M70,320 L88,328 M330,320 L312,312 M330,320 L312,328" />
+                <!-- pencil -->
+                <Canvas Canvas.Left="360" Canvas.Top="250">
+                    <Canvas.RenderTransform>
+                        <RotateTransform Angle="45" />
+                    </Canvas.RenderTransform>
+                    <Rectangle Width="26" Height="120" Fill="#FFC53D" Stroke="#E6F1FF" StrokeThickness="2" />
+                    <Polygon Points="0,120 26,120 13,152" Fill="#F1D9B5" Stroke="#E6F1FF" StrokeThickness="2" />
+                    <Polygon Points="8,140 18,140 13,152" Fill="#2B2B2B" />
+                    <Rectangle Width="26" Height="16" Fill="#E8607A" />
+                </Canvas>
+            </Canvas>
+        </Viewbox>
+
+        <!-- Login card -->
+        <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="320" Padding="22,18,22,18"
+                CornerRadius="8" Background="#F2FFFFFF" BorderBrush="#66FFFFFF" BorderThickness="1">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.45" />
+            </Border.Effect>
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="OmniDT SE" FontSize="22" FontWeight="Bold" Foreground="#12315C" />
+                <TextBlock DockPanel.Dock="Top" Text="Spatial Editor" FontSize="12" Foreground="#52606D" Margin="0,0,0,8" />
+                <TextBlock x:Name="TitleText" DockPanel.Dock="Top" FontSize="14" FontWeight="SemiBold" Text="Log in" />
+                <TextBlock x:Name="MessageText" DockPanel.Dock="Top" TextWrapping="Wrap" Margin="0,4,0,0" MinHeight="34" Foreground="#52606D" />
+                <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+                    <Button x:Name="OkButton" Content="Log in" Padding="20,5" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click" />
+                    <Button Content="Cancel" Padding="20,5" IsCancel="True" />
+                </StackPanel>
+                <StackPanel>
+                    <TextBlock Text="ID" Margin="0,8,0,3" />
+                    <TextBox x:Name="LoginIdTextBox" Padding="3" />
+                    <TextBlock x:Name="NameLabel" Text="Name" Margin="0,8,0,3" Visibility="Collapsed" />
+                    <TextBox x:Name="NameTextBox" Padding="3" Visibility="Collapsed" />
+                    <TextBlock Text="Password" Margin="0,8,0,3" />
+                    <PasswordBox x:Name="PasswordInput" Padding="3" />
+                    <TextBlock x:Name="ConfirmLabel" Text="Confirm password" Margin="0,8,0,3" Visibility="Collapsed" />
+                    <PasswordBox x:Name="ConfirmInput" Padding="3" Visibility="Collapsed" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

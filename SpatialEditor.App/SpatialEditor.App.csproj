@@ -13,6 +13,27 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <ApplicationIcon>Resources\app.ico</ApplicationIcon>
+    <!-- Product name shown in the exe's file properties -->
+    <Product>OmniDT SE (Spatial Editor)</Product>
+    <AssemblyTitle>OmniDT SE</AssemblyTitle>
+    <Description>OmniDT SE - PostGIS spatial editor for CAD equipment drawings</Description>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Development build number: the date and time of this build (yyyyMMddHHmmss), re-evaluated on every build. -->
+    <BuildStamp>$([System.DateTime]::Now.ToString("yyyyMMddHHmmss"))</BuildStamp>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>BuildStamp</_Parameter1>
+      <_Parameter2>$(BuildStamp)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\app.ico" />
+  </ItemGroup>
 
 </Project>

@@ -103,6 +103,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
 
         // Backfills definitions/transform columns for instances imported before they existed.
         await SyncBlockDefinitionsAsync(connection, null, cancellationToken);
+        await LibraryRepository.EnsureSchemaAsync(connection, null, cancellationToken);
+        await ChangeFeedRepository.EnsureSchemaAsync(connection, null, cancellationToken);
     }
 
     /// <summary>
@@ -370,8 +372,26 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return layers;
     }
 
-    public async Task DeleteImportedFileAsync(string sourceFile, CancellationToken cancellationToken = default)
+    public async Task DeleteImportedFileAsync(
+        string sourceFile, CancellationToken cancellationToken = default, ChangeContext? changeContext = null)
     {
+        // The layers have to be read before their rows are gone.
+        var affectedLayers = new List<string>();
+        await using (var layerConnection = await dataSource.OpenConnectionAsync(cancellationToken))
+        await using (var layerCommand = new NpgsqlCommand("""
+            SELECT DISTINCT COALESCE(layer_name, '(no layer)') FROM spatial_features WHERE source_file = $1
+            UNION
+            SELECT DISTINCT COALESCE(layer_name, '(no layer)') FROM spatial_block_instances WHERE source_file = $1;
+            """, layerConnection))
+        {
+            layerCommand.Parameters.AddWithValue(sourceFile);
+            await using var layerReader = await layerCommand.ExecuteReaderAsync(cancellationToken);
+            while (await layerReader.ReadAsync(cancellationToken))
+            {
+                affectedLayers.Add(layerReader.GetString(0));
+            }
+        }
+
         const string sql = """
             DELETE FROM spatial_features
             WHERE source_file = $1
@@ -393,6 +413,13 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             "DELETE FROM block_definitions WHERE source_file = $1;", connection);
         definitionCommand.Parameters.AddWithValue(sourceFile);
         await definitionCommand.ExecuteNonQueryAsync(cancellationToken);
+
+        await using var changeTransaction = await connection.BeginTransactionAsync(cancellationToken);
+        await ChangeFeedRepository.RecordAsync(
+            connection, changeTransaction, changeContext,
+            affectedLayers.Select(name => new ChangeEntry(name, ChangeEntityType.Import, null, ChangeOperation.Delete)).ToList(),
+            cancellationToken);
+        await changeTransaction.CommitAsync(cancellationToken);
     }
 
     public async Task<bool> HasImportedFileAsync(string sourceFile, CancellationToken cancellationToken = default)
@@ -536,9 +563,11 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         IReadOnlyList<(long Id, Geometry Geometry, Geometry OuterGeometry, DateTime ExpectedUpdatedAt, bool IsBlockInstance, IReadOnlyDictionary<string, string?>? Attributes)> updates,
         IReadOnlyList<(EditableLayerObject Source, Geometry Geometry, Geometry OuterGeometry)> inserts,
         IReadOnlyList<(long Id, DateTime ExpectedUpdatedAt, bool IsBlockInstance)> deletes,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ChangeContext? changeContext = null)
     {
         var conflictIds = new List<long>();
+        var changes = new List<ChangeEntry>();
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -551,8 +580,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             var writeAttributes = update.Attributes is not null;
             await using var command = new NpgsqlCommand(
                 writeAttributes
-                    ? $"UPDATE {table} SET geom = $1, outer_geom = $2, attributes = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND updated_at = $4;"
-                    : $"UPDATE {table} SET geom = $1, outer_geom = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND updated_at = $4;",
+                    ? $"UPDATE {table} SET geom = $1, outer_geom = $2, attributes = $5, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND updated_at = $4 RETURNING layer_name;"
+                    : $"UPDATE {table} SET geom = $1, outer_geom = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3 AND updated_at = $4 RETURNING layer_name;",
                 connection, transaction);
             command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Geometry, Value = update.Geometry });
             command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Geometry, Value = update.OuterGeometry });
@@ -562,10 +591,15 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             {
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = System.Text.Json.JsonSerializer.Serialize(update.Attributes) });
             }
-            var affected = await command.ExecuteNonQueryAsync(cancellationToken);
-            if (affected == 0)
+            // RETURNING yields no row when the optimistic-concurrency guard matched nothing.
+            var layer = await command.ExecuteScalarAsync(cancellationToken);
+            if (layer is null)
             {
                 conflictIds.Add(update.Id);
+            }
+            else
+            {
+                changes.Add(new ChangeEntry(layer as string ?? NoLayer, ChangeKind(update.IsBlockInstance), update.Id, ChangeOperation.Update));
             }
         }
 
@@ -577,7 +611,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
                     INSERT INTO spatial_block_instances
                         (source_file, block_name, layer_name, attributes, geom, outer_geom)
                     VALUES
-                        ($1, $2, $3, $4, $5, $6);
+                        ($1, $2, $3, $4, $5, $6)
+                    RETURNING id;
                     """, connection, transaction);
                 command.Parameters.AddWithValue((object?)insert.Source.SourceFile ?? DBNull.Value);
                 command.Parameters.AddWithValue((object?)insert.Source.BlockName ?? DBNull.Value);
@@ -585,7 +620,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = System.Text.Json.JsonSerializer.Serialize(insert.Source.Attributes) });
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Geometry, Value = insert.Geometry });
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Geometry, Value = insert.OuterGeometry });
-                await command.ExecuteNonQueryAsync(cancellationToken);
+                var newId = (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+                changes.Add(new ChangeEntry(insert.Source.LayerName ?? NoLayer, ChangeKind(true), newId, ChangeOperation.Insert));
                 continue;
             }
 
@@ -593,7 +629,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
                 INSERT INTO spatial_features
                     (feature_type, block_name, source_file, layer_name, attributes, geom, outer_geom)
                 VALUES
-                    ($1, $2, $3, $4, $5, $6, $7);
+                    ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id;
                 """, connection, transaction))
             {
                 command.Parameters.AddWithValue(insert.Source.FeatureType);
@@ -603,7 +640,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = System.Text.Json.JsonSerializer.Serialize(insert.Source.Attributes) });
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Geometry, Value = insert.Geometry });
                 command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Geometry, Value = insert.OuterGeometry });
-                await command.ExecuteNonQueryAsync(cancellationToken);
+                var newId = (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+                changes.Add(new ChangeEntry(insert.Source.LayerName ?? NoLayer, ChangeKind(false), newId, ChangeOperation.Insert));
             }
         }
 
@@ -611,20 +649,31 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         {
             var table = delete.IsBlockInstance ? "spatial_block_instances" : "spatial_features";
             await using var command = new NpgsqlCommand(
-                $"DELETE FROM {table} WHERE id = $1 AND updated_at = $2;", connection, transaction);
+                $"DELETE FROM {table} WHERE id = $1 AND updated_at = $2 RETURNING layer_name;", connection, transaction);
             command.Parameters.AddWithValue(delete.Id);
             command.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.TimestampTz, Value = delete.ExpectedUpdatedAt });
-            var affected = await command.ExecuteNonQueryAsync(cancellationToken);
-            if (affected == 0)
+            var layer = await command.ExecuteScalarAsync(cancellationToken);
+            if (layer is null)
             {
                 conflictIds.Add(delete.Id);
+            }
+            else
+            {
+                changes.Add(new ChangeEntry(layer as string ?? NoLayer, ChangeKind(delete.IsBlockInstance), delete.Id, ChangeOperation.Delete));
             }
         }
 
         await SyncBlockDefinitionsAsync(connection, transaction, cancellationToken);
+        await LibraryRepository.EnsureSchemaAsync(connection, transaction, cancellationToken);
+        await ChangeFeedRepository.RecordAsync(connection, transaction, changeContext, changes, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return conflictIds;
     }
+
+    private const string NoLayer = "(no layer)";
+
+    private static string ChangeKind(bool isBlockInstance) =>
+        isBlockInstance ? ChangeEntityType.BlockInstance : ChangeEntityType.Feature;
 
     private const int InstanceBatchSize = 500;
 
@@ -641,7 +690,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         IReadOnlyList<(string BlockName, string? LayerName, Geometry Geometry, Geometry OuterGeometry, IReadOnlyDictionary<string, string?> Attributes)> instances,
         string sourceFile,
         IProgress<ImportProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        ChangeContext? changeContext = null)
     {
         var total = layers.Count + instances.Count;
         var completed = 0;
@@ -698,6 +748,13 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         }
 
         await SyncBlockDefinitionsAsync(connection, transaction, cancellationToken);
+        await LibraryRepository.EnsureSchemaAsync(connection, transaction, cancellationToken);
+        await ChangeFeedRepository.RecordAsync(
+            connection, transaction, changeContext,
+            layers.Select(layer => layer.LayerName).Concat(instances.Select(instance => instance.LayerName))
+                .Select(name => name ?? NoLayer).Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(name => new ChangeEntry(name, ChangeEntityType.Import, null, ChangeOperation.Insert)).ToList(),
+            cancellationToken);
         await transaction.CommitAsync(cancellationToken);
     }
 

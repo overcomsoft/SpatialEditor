@@ -4,6 +4,13 @@ using Npgsql;
 
 namespace SpatialEditor.Infrastructure;
 
+/// <summary>A layer's display style: <see cref="Color"/> as "#RRGGBB" and line <see cref="Thickness"/> in screen pixels.</summary>
+public sealed class LayerStyleSetting
+{
+    public string? Color { get; set; }
+    public double Thickness { get; set; } = 1.0;
+}
+
 public sealed class PostgresConnectionSettings
 {
     public string Host { get; set; } = "localhost";
@@ -13,6 +20,12 @@ public sealed class PostgresConnectionSettings
     public string Password { get; set; } = string.Empty;
     public bool IncludeErrorDetail { get; set; } = true;
     public List<string> SelectedLayers { get; set; } = new();
+
+    /// <summary>The ID typed at the last successful login (never the password).</summary>
+    public string LastLoginId { get; set; } = string.Empty;
+
+    /// <summary>Per-layer line color/thickness chosen in the layer style dialog, keyed by layer name.</summary>
+    public Dictionary<string, LayerStyleSetting> LayerStyles { get; set; } = new();
 
     [JsonIgnore]
     public string ConnectionString
