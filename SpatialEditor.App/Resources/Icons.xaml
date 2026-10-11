@@ -52,6 +52,133 @@
         </DrawingImage.Drawing>
     </DrawingImage>
 
+    <!-- Export DXF: tray with an arrow leaving it -->
+    <DrawingImage x:Key="Icon.Export">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M3.5,14 V20.5 H20.5 V14" />
+                <GeometryDrawing Pen="{StaticResource Pen.Orange}" Geometry="M12,15 V2.5 M7,7 L12,2 L17,7" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Undo: arrow turning back -->
+    <DrawingImage x:Key="Icon.Undo">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Blue}" Geometry="M9,8 H14.5 A5,5 0 0 1 14.5,18 H8" />
+                <GeometryDrawing Brush="#1565C0" Geometry="M3.5,8 L10,3.5 V12.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Redo: arrow turning forward -->
+    <DrawingImage x:Key="Icon.Redo">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Blue}" Geometry="M15,8 H9.5 A5,5 0 0 0 9.5,18 H16" />
+                <GeometryDrawing Brush="#1565C0" Geometry="M20.5,8 L14,3.5 V12.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Rotate clockwise -->
+    <DrawingImage x:Key="Icon.RotateCw">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Orange}" Geometry="M12,4.5 A7.5,7.5 0 1 1 5,9.5" />
+                <GeometryDrawing Brush="#EF6C00" Geometry="M1.5,7 L8.5,6 L4.5,12.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Rotate counter-clockwise -->
+    <DrawingImage x:Key="Icon.RotateCcw">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Orange}" Geometry="M12,4.5 A7.5,7.5 0 1 0 19,9.5" />
+                <GeometryDrawing Brush="#EF6C00" Geometry="M22.5,7 L15.5,6 L19.5,12.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Select all: dashed frame with objects -->
+    <DrawingImage x:Key="Icon.SelectAll">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.DashBlue}" Geometry="M3,3 H21 V21 H3 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M6.5,7 H11 V12 H6.5 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M13.5,12 H18 V17 H13.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Zoom to selection: magnifier over a box -->
+    <DrawingImage x:Key="Icon.ZoomSelection">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.DashBlue}" Geometry="M4,4 H12 V12 H4 Z" />
+                <GeometryDrawing Brush="#E0F2F1" Pen="{StaticResource Pen.Teal}" Geometry="M14.5,10.5 A4.5,4.5 0 1 0 14.51,10.5 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Teal}" Geometry="M17.8,13.8 L21.5,17.5" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Delete layer: stacked layers with a red cross -->
+    <DrawingImage x:Key="Icon.DeleteLayer">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M12,3 L21,7.5 L12,12 L3,7.5 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Blue}" Geometry="M3,12 L12,16.5 L16,14.5" />
+                <GeometryDrawing Pen="{StaticResource Pen.RedBold}" Geometry="M17,16.5 L22,21.5 M22,16.5 L17,21.5" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Block library: shelf of books -->
+    <DrawingImage x:Key="Icon.Library">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M4,4 H9 V20 H4 Z" />
+                <GeometryDrawing Brush="#E0F2F1" Pen="{StaticResource Pen.Teal}" Geometry="M10,4 H15 V20 H10 Z" />
+                <GeometryDrawing Brush="#FFF3E0" Pen="{StaticResource Pen.Orange}" Geometry="M16,6 L20.5,5 L22,19 L17.5,20 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Register in library: books with a plus -->
+    <DrawingImage x:Key="Icon.RegisterLibrary">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M3,4 H8 V20 H3 Z" />
+                <GeometryDrawing Brush="#E0F2F1" Pen="{StaticResource Pen.Teal}" Geometry="M9,4 H14 V20 H9 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.GreenBold}" Geometry="M18,8 V18 M13.5,13 H22.5" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Settings: gear -->
+    <DrawingImage x:Key="Icon.Settings">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Gray}" Geometry="M12,3 V6 M12,18 V21 M3,12 H6 M18,12 H21 M5.6,5.6 L7.7,7.7 M16.3,16.3 L18.4,18.4 M18.4,5.6 L16.3,7.7 M7.7,16.3 L5.6,18.4" />
+                <GeometryDrawing Brush="#ECEFF1" Pen="{StaticResource Pen.Dark}" Geometry="M12,6.5 A5.5,5.5 0 1 0 12.01,6.5 Z" />
+                <GeometryDrawing Brush="#90A4AE" Pen="{StaticResource Pen.Dark}" Geometry="M12,10 A2,2 0 1 0 12.01,10 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
     <!-- Cancel import: red disc with a cross -->
     <DrawingImage x:Key="Icon.Cancel">
         <DrawingImage.Drawing>

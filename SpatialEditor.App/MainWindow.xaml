@@ -1,4 +1,4 @@
-<Window x:Class="SpatialEditor.App.MainWindow"
+﻿<Window x:Class="SpatialEditor.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -9,7 +9,7 @@
         PreviewKeyDown="Window_PreviewKeyDown">
     <DockPanel>
         <!-- ============================== Menu bar ============================== -->
-        <Menu DockPanel.Dock="Top" Background="#F4F6F8" BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="2,1">
+        <Menu x:Name="MainMenu" DockPanel.Dock="Top" Background="#F4F6F8" BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="2,1">
             <MenuItem Header="_File">
                 <MenuItem Header="Connect to _server..." Click="ConnectServer_Click">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Server}" Width="16" Height="16" /></MenuItem.Icon>
@@ -17,6 +17,9 @@
                 <Separator />
                 <MenuItem Header="_Import DXF" Click="ImportDxf_Click" IsEnabled="{Binding IsEnabled, ElementName=ImportButton}">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Import}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="E_xport DXF (blocks)..." Click="ExportDxf_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Export}" Width="16" Height="16" /></MenuItem.Icon>
                 </MenuItem>
                 <MenuItem Header="_Cancel import" Click="CancelImport_Click" IsEnabled="{Binding IsEnabled, ElementName=CancelImportButton}">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Cancel}" Width="16" Height="16" /></MenuItem.Icon>
@@ -37,6 +40,10 @@
                 <MenuItem Header="_Discard changes" Click="DiscardEdits_Click" IsEnabled="{Binding IsEnabled, ElementName=DiscardEditsButton}">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Discard}" Width="16" Height="16" /></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="Cancel _edits" Click="CancelEdits_Click" />
+                <MenuItem Header="Select _all" Click="SelectAll_Click" />
+                <MenuItem Header="_Undo" Click="Undo_Click" />
+                <MenuItem Header="_Redo" Click="Redo_Click" />
                 <Separator />
                 <MenuItem Header="D_uplicate" InputGestureText="Ctrl+D" Click="DuplicateSelected_Click" IsEnabled="{Binding IsEnabled, ElementName=DuplicateButton}">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Duplicate}" Width="16" Height="16" /></MenuItem.Icon>
@@ -115,6 +122,8 @@
                 <MenuItem x:Name="RegisterLibraryMenuItem" Header="_Register selected block in library..." Click="RegisterInLibrary_Click" IsEnabled="False">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Group}" Width="16" Height="16" /></MenuItem.Icon>
                 </MenuItem>
+                <Separator />
+                <MenuItem x:Name="SettingsMenuItem" Header="_Settings..." Click="OpenSettings_Click" />
             </MenuItem>
             <MenuItem Header="_Admin">
                 <MenuItem x:Name="UsersMenuItem" Header="_User management..." Click="ManageUsers_Click" IsEnabled="False">
@@ -138,80 +147,188 @@
         <!-- ============================== Icon toolbar ============================== -->
         <Border DockPanel.Dock="Top" Background="#F9FAFB" BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="4,2">
             <WrapPanel Orientation="Horizontal">
-                <Button x:Name="ServerButton" Style="{StaticResource IconButton}" Click="ConnectServer_Click" ToolTip="Connect to server...">
-                    <Image Source="{StaticResource Icon.Server}" Width="24" Height="24" />
+                <Button x:Name="ServerButton" Style="{StaticResource ToolButton}" Click="ConnectServer_Click" ToolTip="Connect to server...">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Server}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="서버" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="ImportButton" Style="{StaticResource IconButton}" Click="ImportDxf_Click" IsEnabled="False" ToolTip="Import DXF (SmartLayout.dxf)">
-                    <Image Source="{StaticResource Icon.Import}" Width="24" Height="24" />
+                <Button x:Name="ImportButton" Style="{StaticResource ToolButton}" Click="ImportDxf_Click" IsEnabled="False" ToolTip="Import DXF (SmartLayout.dxf)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Import}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="입력" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <ToggleButton x:Name="SingleLayerImportCheckBox" Style="{StaticResource IconToggleButton}" ToolTip="Equipment only: import just the Equipment INSERTs as block objects">
-                    <Image Source="{StaticResource Icon.EquipOnly}" Width="24" Height="24" />
+                <ToggleButton x:Name="SingleLayerImportCheckBox" Style="{StaticResource ToolToggleButton}" ToolTip="Equipment only: import just the Equipment INSERTs as block objects">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.EquipOnly}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="장비" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </ToggleButton>
-                <Button x:Name="CancelImportButton" Style="{StaticResource IconButton}" Click="CancelImport_Click" IsEnabled="False" ToolTip="Cancel import">
-                    <Image Source="{StaticResource Icon.Cancel}" Width="24" Height="24" />
+                <Button x:Name="CancelImportButton" Style="{StaticResource ToolButton}" Click="CancelImport_Click" IsEnabled="False" ToolTip="Cancel import">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Cancel}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="중단" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="DeleteImportButton" Style="{StaticResource IconButton}" Click="DeleteImportedDxf_Click" IsEnabled="False" ToolTip="Delete imported DXF data">
-                    <Image Source="{StaticResource Icon.DeleteDxf}" Width="24" Height="24" />
+                <Button x:Name="DeleteImportButton" Style="{StaticResource ToolButton}" Click="DeleteImportedDxf_Click" IsEnabled="False" ToolTip="Delete imported DXF data">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.DeleteDxf}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="제거" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-
-                <Border Style="{StaticResource ToolbarSeparator}" />
-
-                <Button Style="{StaticResource IconButton}" Click="ZoomIn_Click" ToolTip="Zoom in (mouse wheel)">
-                    <Image Source="{StaticResource Icon.ZoomIn}" Width="24" Height="24" />
-                </Button>
-                <Button Style="{StaticResource IconButton}" Click="ZoomOut_Click" ToolTip="Zoom out (mouse wheel)">
-                    <Image Source="{StaticResource Icon.ZoomOut}" Width="24" Height="24" />
-                </Button>
-                <Button Style="{StaticResource IconButton}" Click="FitView_Click" ToolTip="Zoom to full extent (F)">
-                    <Image Source="{StaticResource Icon.Fit}" Width="24" Height="24" />
-                </Button>
-                <Button Style="{StaticResource IconButton}" Click="ResetView_Click" ToolTip="Reset view">
-                    <Image Source="{StaticResource Icon.Reset}" Width="24" Height="24" />
+                <Button x:Name="ExportButton" Style="{StaticResource ToolButton}" Click="ExportDxf_Click" ToolTip="Export DXF: equipment as blocks with name / rotation / position attributes">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Export}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="출력" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
 
                 <Border Style="{StaticResource ToolbarSeparator}" />
 
-                <Button Style="{StaticResource IconButton}" Click="DeselectAll_Click" ToolTip="Deselect all">
-                    <Image Source="{StaticResource Icon.Deselect}" Width="24" Height="24" />
+                <Button Style="{StaticResource ToolButton}" Click="ZoomIn_Click" ToolTip="Zoom in (mouse wheel)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.ZoomIn}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="확대" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ToolButton}" Click="ZoomOut_Click" ToolTip="Zoom out (mouse wheel)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.ZoomOut}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="축소" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ToolButton}" Click="FitView_Click" ToolTip="Zoom to full extent (F)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Fit}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="전체" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="ZoomSelectionButton" Style="{StaticResource ToolButton}" Click="ZoomToSelection_Click" IsEnabled="False" ToolTip="Zoom to the selected objects">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.ZoomSelection}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="선택" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ToolButton}" Click="ResetView_Click" ToolTip="Reset view">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Reset}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="초기" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
 
                 <Border Style="{StaticResource ToolbarSeparator}" />
 
-                <Button x:Name="EditModeButton" Style="{StaticResource IconButton}" Click="ToggleEditMode_Click" IsEnabled="False" ToolTip="Edit mode (all layers)">
-                    <Image Source="{StaticResource Icon.Edit}" Width="24" Height="24" />
+                <Button x:Name="SelectAllButton" Style="{StaticResource ToolButton}" Click="SelectAll_Click" IsEnabled="False" ToolTip="Select all objects (Ctrl+A, edit mode)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.SelectAll}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="모두" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="SaveEditsButton" Style="{StaticResource IconButton}" Click="SaveEdits_Click" IsEnabled="False" ToolTip="Save changes (Ctrl+S)">
-                    <Image Source="{StaticResource Icon.Save}" Width="24" Height="24" />
+                <Button Style="{StaticResource ToolButton}" Click="DeselectAll_Click" ToolTip="Deselect all">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Deselect}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="해제" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="DiscardEditsButton" Style="{StaticResource IconButton}" Click="DiscardEdits_Click" IsEnabled="False" ToolTip="Discard changes and leave edit mode">
-                    <Image Source="{StaticResource Icon.Discard}" Width="24" Height="24" />
+
+                <Border Style="{StaticResource ToolbarSeparator}" />
+
+                <Button x:Name="EditModeButton" Style="{StaticResource ToolButton}" Click="ToggleEditMode_Click" IsEnabled="False" ToolTip="Edit mode (all layers)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Edit}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="편집" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="DuplicateButton" Style="{StaticResource IconButton}" Click="DuplicateSelected_Click" IsEnabled="False" ToolTip="Duplicate selected (Ctrl+D)">
-                    <Image Source="{StaticResource Icon.Duplicate}" Width="24" Height="24" />
+                <Button x:Name="SaveEditsButton" Style="{StaticResource ToolButton}" Click="SaveEdits_Click" IsEnabled="False" ToolTip="Save changes (Ctrl+S)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Save}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="저장" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="DeleteObjectButton" Style="{StaticResource IconButton}" Click="DeleteSelected_Click" IsEnabled="False" ToolTip="Delete selected (Del)">
-                    <Image Source="{StaticResource Icon.DeleteObject}" Width="24" Height="24" />
+                <Button x:Name="DiscardEditsButton" Style="{StaticResource ToolButton}" Click="DiscardEdits_Click" IsEnabled="False" ToolTip="Discard changes and leave edit mode">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Discard}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="취소" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="GroupButton" Style="{StaticResource IconButton}" Click="GroupSelected_Click" IsEnabled="False"
-                        ToolTip="Group the selected objects into one block (Ctrl+G). Select several with Ctrl+click or a selection box.">
-                    <Image Source="{StaticResource Icon.Group}" Width="24" Height="24" />
+                <Button x:Name="UndoButton" Style="{StaticResource ToolButton}" Click="Undo_Click" IsEnabled="False" ToolTip="Undo (Ctrl+Z)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Undo}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="이전" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button x:Name="VertexEditButton" Style="{StaticResource IconButton}" Click="ToggleVertexEdit_Click" IsEnabled="False" ToolTip="Vertex edit">
-                    <Image Source="{StaticResource Icon.Vertex}" Width="24" Height="24" />
+                <Button x:Name="RedoButton" Style="{StaticResource ToolButton}" Click="Redo_Click" IsEnabled="False" ToolTip="Redo (Ctrl+R)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Redo}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="다시" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <ToggleButton x:Name="SnapToGridCheckBox" Style="{StaticResource IconToggleButton}"
-                              Checked="SnapToGridCheckBox_Changed" Unchecked="SnapToGridCheckBox_Changed"
-                              ToolTip="Snap moved/duplicated objects to a 10 mm grid">
-                    <Image Source="{StaticResource Icon.Snap}" Width="24" Height="24" />
+
+                <Border Style="{StaticResource ToolbarSeparator}" />
+
+                <Button x:Name="DuplicateButton" Style="{StaticResource ToolButton}" Click="DuplicateSelected_Click" IsEnabled="False" ToolTip="Duplicate selected (Ctrl+D)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Duplicate}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="복제" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="DeleteObjectButton" Style="{StaticResource ToolButton}" Click="DeleteSelected_Click" IsEnabled="False" ToolTip="Delete selected (Del)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.DeleteObject}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="삭제" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="GroupButton" Style="{StaticResource ToolButton}" Click="GroupSelected_Click" IsEnabled="False" ToolTip="Group the selected objects into one block (Ctrl+G). Select several with Shift/Ctrl+click or a selection box.">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Group}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="그룹" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RotateCwButton" Style="{StaticResource ToolButton}" Click="RotateCw_Click" IsEnabled="False" ToolTip="Rotate selected 90° clockwise (r)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.RotateCw}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="시계" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="RotateCcwButton" Style="{StaticResource ToolButton}" Click="RotateCcw_Click" IsEnabled="False" ToolTip="Rotate selected 90° counter-clockwise (Shift+R)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.RotateCcw}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="반시" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="VertexEditButton" Style="{StaticResource ToolButton}" Click="ToggleVertexEdit_Click" IsEnabled="False" ToolTip="Vertex edit">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Vertex}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="정점" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <ToggleButton x:Name="SnapToGridCheckBox" Style="{StaticResource ToolToggleButton}" Checked="SnapToGridCheckBox_Changed" Unchecked="SnapToGridCheckBox_Changed" ToolTip="Snap moved/duplicated objects to a 10 mm grid">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Snap}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="격자" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </ToggleButton>
 
                 <Border Style="{StaticResource ToolbarSeparator}" />
 
-                <Button Style="{StaticResource IconButton}" Click="Validate_Click" ToolTip="Validate the selected geometry">
-                    <Image Source="{StaticResource Icon.Validate}" Width="24" Height="24" />
+                <Button x:Name="LibraryButton" Style="{StaticResource ToolButton}" Click="OpenLibrary_Click" IsEnabled="False" ToolTip="Block library...">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Library}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="블록" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
-                <Button Style="{StaticResource IconButton}" Click="AddPoint_Click" ToolTip="Add point">
-                    <Image Source="{StaticResource Icon.AddPoint}" Width="24" Height="24" />
+                <Button x:Name="RegisterLibraryButton" Style="{StaticResource ToolButton}" Click="RegisterInLibrary_Click" IsEnabled="False" ToolTip="Register the selected block in the library...">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.RegisterLibrary}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="등록" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ToolButton}" Click="OpenSettings_Click" ToolTip="Settings... (login, shortcuts, auto-save)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Settings}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="설정" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
                 </Button>
             </WrapPanel>
         </Border>
@@ -290,9 +407,15 @@
 
             <!-- Layers panel -->
             <Border x:Name="LeftPanel" Grid.Column="0" Background="White" BorderBrush="#D0D7DE" BorderThickness="1">
-                <DockPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition x:Name="MiniMapRow" Height="170" MinHeight="60" />
+                        <RowDefinition Height="6" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" MinHeight="60" />
+                    </Grid.RowDefinitions>
                     <!-- Overview map: whole drawing with the current view as a rectangle -->
-                    <Border x:Name="MiniMapBorder" DockPanel.Dock="Top" Height="170" Background="#EAF0F6"
+                    <Border x:Name="MiniMapBorder" Grid.Row="0" Background="#EAF0F6"
                             BorderBrush="#D0D7DE" BorderThickness="0,0,0,1" Padding="4" Cursor="Hand"
                             ToolTip="Overview: click or drag to move the view"
                             MouseLeftButtonDown="MiniMap_MouseDown" MouseMove="MiniMap_MouseMove"
@@ -305,7 +428,9 @@
                             </Canvas>
                         </Viewbox>
                     </Border>
-                    <Border DockPanel.Dock="Top" Style="{StaticResource PanelHeader}">
+                    <GridSplitter Grid.Row="1" Height="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                  Background="#D7DEE5" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />
+                    <Border Grid.Row="2" Style="{StaticResource PanelHeader}">
                         <DockPanel>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                                 <Button Style="{StaticResource MiniIconButton}" Click="LoadLayers_Click" ToolTip="Load layers... (choose which layers to fetch)">
@@ -313,6 +438,9 @@
                                 </Button>
                                 <Button Style="{StaticResource MiniIconButton}" Click="RefreshLayers_Click" ToolTip="Refresh layers from the database">
                                     <Image Source="{StaticResource Icon.Refresh}" Width="18" Height="18" />
+                                </Button>
+                                <Button Style="{StaticResource MiniIconButton}" Click="SelectedLayerDelete_Click" ToolTip="Delete the selected layer and all its objects">
+                                    <Image Source="{StaticResource Icon.DeleteObject}" Width="18" Height="18" />
                                 </Button>
                                 <Button Style="{StaticResource MiniIconButton}" Click="ShowAllLayers_Click" ToolTip="Show all layers">
                                     <Image Source="{StaticResource Icon.ShowAll}" Width="18" Height="18" />
@@ -324,10 +452,10 @@
                             <TextBlock Text="Layers" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </DockPanel>
                     </Border>
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel x:Name="LayersPanel" Margin="4" />
                     </ScrollViewer>
-                </DockPanel>
+                </Grid>
             </Border>
             <GridSplitter x:Name="LeftSplitter" Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                           Background="#D7DEE5" ResizeBehavior="PreviousAndNext" ShowsPreview="False" />

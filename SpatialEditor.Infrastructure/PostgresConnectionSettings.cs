@@ -9,6 +9,10 @@ public sealed class LayerStyleSetting
 {
     public string? Color { get; set; }
     public double Thickness { get; set; } = 1.0;
+    /// <summary>Polygon fill "#RRGGBB"; null means the fill follows <see cref="Color"/>.</summary>
+    public string? FillColor { get; set; }
+    /// <summary>Polygon fill opacity, 0 (transparent) to 1 (solid).</summary>
+    public double FillOpacity { get; set; } = 60.0 / 255.0;
 }
 
 public sealed class PostgresConnectionSettings
@@ -23,6 +27,42 @@ public sealed class PostgresConnectionSettings
 
     /// <summary>The ID typed at the last successful login (never the password).</summary>
     public string LastLoginId { get; set; } = string.Empty;
+
+    /// <summary>The login password, encrypted with Windows DPAPI (current user) and Base64-encoded. Empty when not remembered.</summary>
+    public string LastLoginPasswordProtected { get; set; } = string.Empty;
+
+    /// <summary>Decrypted last login password; empty if none or if it cannot be decrypted on this account/machine.</summary>
+    [JsonIgnore]
+    public string LastLoginPassword
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(LastLoginPasswordProtected))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var bytes = System.Security.Cryptography.ProtectedData.Unprotect(
+                    Convert.FromBase64String(LastLoginPasswordProtected), null,
+                    System.Security.Cryptography.DataProtectionScope.CurrentUser);
+                return System.Text.Encoding.UTF8.GetString(bytes);
+            }
+            catch (Exception)
+            {
+                return string.Empty;
+            }
+        }
+        set
+        {
+            LastLoginPasswordProtected = string.IsNullOrEmpty(value)
+                ? string.Empty
+                : Convert.ToBase64String(System.Security.Cryptography.ProtectedData.Protect(
+                    System.Text.Encoding.UTF8.GetBytes(value), null,
+                    System.Security.Cryptography.DataProtectionScope.CurrentUser));
+        }
+    }
 
     /// <summary>Per-layer line color/thickness chosen in the layer style dialog, keyed by layer name.</summary>
     public Dictionary<string, LayerStyleSetting> LayerStyles { get; set; } = new();

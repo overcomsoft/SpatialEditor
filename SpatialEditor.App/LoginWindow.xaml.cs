@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Media;
 using SpatialEditor.Domain;
 using SpatialEditor.Infrastructure;
@@ -16,7 +16,10 @@ public partial class LoginWindow : Window
 
     public AppUser? User { get; private set; }
 
-    public LoginWindow(UserRepository repository, string lastLoginId, bool setupMode)
+    /// <summary>The password that was just used to log in successfully.</summary>
+    public string EnteredPassword { get; private set; } = string.Empty;
+
+    public LoginWindow(UserRepository repository, string lastLoginId, string lastPassword, bool setupMode)
     {
         InitializeComponent();
         this.repository = repository;
@@ -37,6 +40,7 @@ public partial class LoginWindow : Window
         {
             MessageText.Text = "Log in with your application account.";
             LoginIdTextBox.Text = lastLoginId;
+            PasswordInput.Password = lastPassword;
         }
 
         Loaded += (_, _) =>
@@ -92,6 +96,7 @@ public partial class LoginWindow : Window
                 }
 
                 User = result.User;
+                EnteredPassword = password;
             }
 
             DialogResult = true;

@@ -1,0 +1,91 @@
+<Window x:Class="SpatialEditor.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:SpatialEditor.App"
+        Title="Settings" Height="560" Width="780" MinHeight="460" MinWidth="640"
+        WindowStartupLocation="CenterOwner" Background="#F4F6F8">
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="OK" Padding="24,5" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click" />
+            <Button Content="Cancel" Padding="20,5" IsCancel="True" />
+        </StackPanel>
+
+        <ListBox x:Name="PageList" DockPanel.Dock="Left" Width="150" Margin="0,0,12,0" SelectedIndex="0"
+                 SelectionChanged="PageList_SelectionChanged" FontSize="14" BorderBrush="#D0D7DE">
+            <ListBoxItem Padding="10,8">Login</ListBoxItem>
+            <ListBoxItem Padding="10,8">Shortcuts</ListBoxItem>
+            <ListBoxItem Padding="10,8">General</ListBoxItem>
+        </ListBox>
+
+        <Grid>
+            <!-- ============================== Login ============================== -->
+            <StackPanel x:Name="LoginPage">
+                <TextBlock Text="Login" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+                <TextBlock x:Name="SavedLoginText" Foreground="#52606D" Margin="0,0,0,10" />
+                <CheckBox x:Name="RememberPasswordCheck" Content="Remember the password (stored encrypted for this Windows account)"
+                          Margin="0,0,0,8" Checked="LoginOptions_Changed" Unchecked="LoginOptions_Changed" />
+                <CheckBox x:Name="AutoLoginCheck" Content="Log in automatically at start-up with the saved ID and password"
+                          Margin="0,0,0,8" />
+                <TextBlock x:Name="AutoLoginHint" TextWrapping="Wrap" Foreground="#7B8794" Margin="22,0,0,12"
+                           Text="If the saved password no longer works the login window is shown instead. Logging out never logs in again automatically." />
+                <Button x:Name="ClearPasswordButton" Content="Delete the saved password" HorizontalAlignment="Left"
+                        Padding="12,4" Click="ClearPassword_Click" />
+            </StackPanel>
+
+            <!-- ============================== Shortcuts ============================== -->
+            <DockPanel x:Name="ShortcutPage" Visibility="Collapsed">
+                <TextBlock DockPanel.Dock="Top" Text="Shortcuts" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#52606D" Margin="0,0,0,8"
+                           Text="Select a function, click the box below and press the new key combination. Shortcuts are ignored while typing in a text box." />
+                <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="New shortcut:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                        <TextBox x:Name="CaptureBox" Width="200" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+                                 PreviewKeyDown="CaptureBox_PreviewKeyDown" GotKeyboardFocus="CaptureBox_Focus"
+                                 Text="(press keys)" Padding="4,3" />
+                        <Button Content="Clear" Margin="8,0,0,0" Padding="12,3" Click="ClearShortcut_Click" />
+                        <Button Content="Default" Margin="6,0,0,0" Padding="12,3" Click="DefaultShortcut_Click" />
+                        <Button Content="Reset all" Margin="6,0,0,0" Padding="12,3" Click="ResetAllShortcuts_Click" />
+                    </StackPanel>
+                    <TextBlock x:Name="ShortcutMessage" Margin="0,6,0,0" Foreground="#52606D" TextWrapping="Wrap" />
+                </StackPanel>
+                <ListView x:Name="ShortcutList" SelectionMode="Single" SelectionChanged="ShortcutList_SelectionChanged">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Category" Width="90" DisplayMemberBinding="{Binding Category}" />
+                            <GridViewColumn Header="Function" Width="300" DisplayMemberBinding="{Binding Name}" />
+                            <GridViewColumn Header="Shortcut" Width="120" DisplayMemberBinding="{Binding Gesture}" />
+                            <GridViewColumn Header="Default" Width="100" DisplayMemberBinding="{Binding DefaultGesture}" />
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+            </DockPanel>
+
+            <!-- ============================== General ============================== -->
+            <ScrollViewer x:Name="GeneralPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <TextBlock Text="General" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+                <CheckBox x:Name="AutoSaveCheck" Content="Auto-save edits" Margin="0,0,0,6" Checked="AutoSave_Changed" Unchecked="AutoSave_Changed" />
+                <StackPanel x:Name="AutoSavePanel" Orientation="Horizontal" Margin="22,0,0,6">
+                    <TextBlock Text="Every" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox x:Name="AutoSaveMinutesBox" Width="50" Padding="3" TextAlignment="Right" />
+                    <TextBlock Text="minute(s)  (1 - 120)" VerticalAlignment="Center" Margin="6,0,0,0" />
+                </StackPanel>
+                <TextBlock TextWrapping="Wrap" Foreground="#7B8794" Margin="22,0,0,0"
+                           Text="While in edit mode, pending changes are saved to the server at this interval. The edit session continues afterwards, but the selection is cleared. Nothing is saved when equipment overlaps or another user changed the same object (the normal conflict rules apply)." />
+
+                <TextBlock Text="Selection outline" FontSize="15" FontWeight="SemiBold" Margin="0,18,0,6" />
+                <local:ColorEditor x:Name="SelectionColorEditor" Margin="0,0,0,8" HorizontalAlignment="Left" Width="360" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <TextBlock Text="Thickness" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <Slider x:Name="SelectionThicknessSlider" Width="220" Minimum="0.5" Maximum="8" TickFrequency="0.5" IsSnapToTickEnabled="True" VerticalAlignment="Center" ValueChanged="SelectionStyle_Changed" />
+                    <TextBlock x:Name="SelectionThicknessText" Width="50" TextAlignment="Right" VerticalAlignment="Center" />
+                </StackPanel>
+                <Border BorderBrush="#D7DEE5" BorderThickness="1" Background="White" Width="360" Height="60" HorizontalAlignment="Left">
+                    <Canvas x:Name="SelectionPreview" ClipToBounds="True" />
+                </Border>
+            </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

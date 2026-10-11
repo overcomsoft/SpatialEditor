@@ -422,6 +422,95 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         await changeTransaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Deletes one whole layer (its features and block instances, whatever file they came from) in
+    /// a single transaction, drops block definitions no instance uses any more, and records a
+    /// whole-layer delete so other sessions refresh. <c>"(no layer)"</c> addresses rows without a layer.
+    /// Returns the number of rows removed.
+    /// </summary>
+    public async Task<int> DeleteLayerAsync(
+        string layerName, CancellationToken cancellationToken = default, ChangeContext? changeContext = null)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var removed = 0;
+        foreach (var table in new[] { "spatial_features", "spatial_block_instances" })
+        {
+            await using var command = new NpgsqlCommand(
+                $"DELETE FROM {table} WHERE COALESCE(layer_name, '(no layer)') = $1;", connection, transaction);
+            command.Parameters.AddWithValue(layerName);
+            removed += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        await using (var definitions = new NpgsqlCommand("""
+            DELETE FROM block_definitions d
+            WHERE NOT EXISTS (SELECT 1 FROM spatial_block_instances i WHERE i.definition_id = d.id);
+            """, connection, transaction))
+        {
+            await definitions.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (removed > 0)
+        {
+            await ChangeFeedRepository.RecordAsync(
+                connection, transaction, changeContext,
+                new List<ChangeEntry> { new(layerName, ChangeEntityType.Import, null, ChangeOperation.Delete) },
+                cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return removed;
+    }
+
+    /// <summary>True when any feature or block instance already uses this layer name (case-insensitive).</summary>
+    public async Task<bool> LayerExistsAsync(string layerName, CancellationToken cancellationToken = default)
+    {
+        const string sql = """
+            SELECT EXISTS (SELECT 1 FROM spatial_features WHERE lower(COALESCE(layer_name, '(no layer)')) = lower($1))
+                OR EXISTS (SELECT 1 FROM spatial_block_instances WHERE lower(COALESCE(layer_name, '(no layer)')) = lower($1));
+            """;
+        await using var command = dataSource.CreateCommand(sql);
+        command.Parameters.AddWithValue(layerName);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    /// <summary>
+    /// Renames a layer in both tables in one transaction and records the old name as deleted and the
+    /// new one as updated so other sessions refresh. Returns the number of rows renamed.
+    /// </summary>
+    public async Task<int> RenameLayerAsync(
+        string oldName, string newName, CancellationToken cancellationToken = default, ChangeContext? changeContext = null)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+        var renamed = 0;
+        foreach (var table in new[] { "spatial_features", "spatial_block_instances" })
+        {
+            await using var command = new NpgsqlCommand(
+                $"UPDATE {table} SET layer_name = $2 WHERE COALESCE(layer_name, '(no layer)') = $1;", connection, transaction);
+            command.Parameters.AddWithValue(oldName);
+            command.Parameters.AddWithValue(newName);
+            renamed += await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (renamed > 0)
+        {
+            await ChangeFeedRepository.RecordAsync(
+                connection, transaction, changeContext,
+                new List<ChangeEntry>
+                {
+                    new(oldName, ChangeEntityType.Import, null, ChangeOperation.Delete),
+                    new(newName, ChangeEntityType.Import, null, ChangeOperation.Update)
+                },
+                cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return renamed;
+    }
+
     public async Task<bool> HasImportedFileAsync(string sourceFile, CancellationToken cancellationToken = default)
     {
         const string sql = """

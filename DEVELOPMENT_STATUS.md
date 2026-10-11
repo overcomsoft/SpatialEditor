@@ -1,6 +1,6 @@
 # OmniDT SE (Spatial Editor) 개발 현황 및 기능 목록
 
-기준일: 2026-10-08 / 브랜치: main
+기준일: 2026-10-11 / 브랜치: main
 
 ## 1. 개요
 
@@ -16,7 +16,7 @@
 | SpatialEditor.Domain | 도메인 모델: 공간 객체, 사용자·권한(`Users.cs`), 라이브러리(`Library.cs`), 변경 기록(`ChangeFeed.cs`) |
 | SpatialEditor.Geometry | NTS 기반 Point/Line/Polygon 생성·검증, PolylinePolygonizer |
 | SpatialEditor.Infrastructure | Npgsql/PostGIS 리포지토리, 사용자(`UserRepository`)·비밀번호 해시(`PasswordHasher`), 라이브러리(`LibraryRepository`), 변경 기록·알림(`ChangeFeedRepository`, `ChangeListener`), 설정 저장, Import 감사 로그 |
-| SpatialEditor.Cad | netDxf 기반 DXF Import (`DxfBlockImporter`) |
+| SpatialEditor.Cad | netDxf 기반 DXF Import(`DxfBlockImporter`)와 내보내기(`DxfBlockExporter`) |
 | SpatialEditor.Geometry.Tests / Cad.Tests / Infrastructure.Tests | 단위 테스트 (Geometry 2, Cad 4, Infrastructure 14 = 20건 통과) |
 | database/001_initial_schema.sql | 초기 스키마 참고용(실제 스키마는 앱 시작 시 `EnsureSchema`가 멱등 SQL로 보장) |
 | tools/dxf_to_shp.py | DXF → Shapefile/CSV 변환 보조 도구 (Python) |
@@ -25,7 +25,7 @@
 
 ### 3.1 화면 구성 (QGIS 스타일)
 - 메뉴 막대: File / Edit / View / Layer / Tools / Admin / Help. 항목의 활성 상태는 툴바·권한과 연동된다.
-- 컬러 아이콘 툴바(벡터 아이콘 30종, 줄바꿈 지원), 하단 상태 표시줄(서버 연결, 로그인 사용자, 동기화 상태, 빌드 번호, 좌표, 확대율, 선택 수, EPSG, 진행률).
+- 컬러 아이콘 툴바(벡터 아이콘 40종 안팎, 줄바꿈 지원): 서버·DXF / 보기 / 선택 / 편집·Undo / 객체 편집 / 라이브러리·설정 그룹으로 묶고 버튼마다 한글 2자 이름표를 붙였다. 레이어 버튼은 레이어 패널에 있다, 하단 상태 표시줄(서버 연결, 로그인 사용자, 동기화 상태, 빌드 번호, 좌표, 확대율, 선택 수, EPSG, 진행률).
 - 좌측 패널(미니맵 + 레이어 관리), 가운데 지도, 우측 속성 패널. 패널은 스플리터로 폭 조절, 메뉴로 숨김 가능.
 - 서버 접속 정보는 상태 표시줄에 최소화해 표시한다. 편집 모드에서는 마우스 커서가 바뀐다.
 - 프로그램 아이콘: 설비 도면을 편집한다는 의미(설계도 격자, 설비 평면, 치수선, 연필). 로그인 창 배경에도 같은 그림을 쓴다.
@@ -58,6 +58,10 @@
 - **레이어 스타일**: 레이어별 선 색상·두께(고정 화면 두께). 설정 JSON에 저장되어 다음 실행에 복원된다.
 - 스와치 클릭 또는 메뉴로 해당 레이어 편집 모드 진입/종료.
 
+- **레이어 속성 창**: 레이어 이름 변경, 선 색상·두께, 채우기 색상·투명도(선 색과 같게 옵션)를 한 창에서 바꾼다. 이름 변경은 DB 두 테이블에 반영되고 다른 사용자에게 알려진다.
+- **레이어 삭제**: 헤더 버튼과 우클릭 메뉴(`drawing.delete` 권한). 한 트랜잭션으로 객체를 삭제하고 변경 기록을 남기며, 되돌릴 수 없다.
+- **미니맵 높이 조절**: 미니맵과 레이어 목록 사이의 스플리터를 끌어 높이를 바꾼다.
+
 ### 3.6 편집 모드
 - 블록 객체는 **한 객체**처럼 이동(드래그, 10mm 스냅 옵션), 회전(핸들 또는 `r` 시계 90°, `R` 반시계 90°), 복제(`Dup`/Ctrl+D), 삭제(`Del`), 그룹(Ctrl+G, 여러 블록을 한 객체로).
 - 다중 선택(상자 선택 등), 편집 중 객체의 전체 외곽을 금색 점선으로 표시. 원본 위치의 잔상·복사본이 보이지 않는다(편집 중에는 해당 레이어의 기본 도형을 숨기고 편집 도형만 그린다).
@@ -65,6 +69,16 @@
 - **장비 영역 겹침 금지**: 이동·회전·복제로 장비 외곽이 겹치면 "장비영역 겹침" 오류를 알리고 이전 위치로 되돌린다. 저장 직전에도 검사한다.
 - 정점 편집(`Vtx`), 점 추가, 형상 검증. 블록 속성(삽입점·회전)은 이동·회전과 함께 갱신된다.
 - `Save`: 단일 트랜잭션으로 UPDATE/INSERT/DELETE. 낙관적 동시성(`updated_at`) 충돌 객체는 건너뛰고 안내한다.
+
+### 3.6.0 선택·이동·되돌리기 (편집 모드)
+- **다중 선택**: Shift/Ctrl+클릭으로 추가·해제, 빈 곳을 드래그한 범위 선택(설비는 박스에 걸치기만 해도 선택, Shift/Ctrl로 추가), Ctrl+A 전체 선택. 선택된 객체는 복사·삭제·이동·회전이 한꺼번에 적용된다.
+- **키보드 이동**: Ctrl+방향키(격자 스냅 시 한 칸, 아니면 1 단위, Ctrl+Shift는 10배).
+- **Undo/Redo**: Ctrl+Z / Ctrl+R(최대 100단계). ESC는 저장되지 않은 편집 전체를 취소한다(Undo로 복구 가능).
+- **선택 강조 설정**: Settings > General에서 선택 테두리 색상·두께를 지정(기본 노란색 1.5px).
+
+### 3.6.1 DXF 내보내기
+- 툴바/File 메뉴 `Export DXF`(`drawing.export`). 편집 중이면 저장 전 현재 상태를, 아니면 저장된 블록 객체를 내보낸다.
+- 블록 이름별 `BLOCK` 정의 + 객체별 `INSERT`. 이름(`NAME`)·회전(`ROTATION`)·위치점(`POS_X`, `POS_Y`)을 숨김 블록 속성으로 기록한다.
 
 ### 3.7 블록 모델
 - `block_definitions`: 블록의 로컬 좌표계 형상(삽입점 기준). 인스턴스(`spatial_block_instances`)는 정의 ID, 삽입점, 회전, 축척과 월드 좌표 캐시(`geom`, `outer_geom`)를 가진다. 멱등 SQL로 동기화한다.
@@ -93,6 +107,8 @@
 6. 장비 겹침 금지, `r`/`R` 회전, 선택 강조 잔상·숨김 레이어 버그 수정
 7. 블록 라이브러리 1단계, 분류 이름 변경
 8. 다중 사용자 동기화(1~4단계), 미니맵, 빌드 번호 표시
+9. DXF 내보내기, 레이어 삭제·속성(이름·선·채우기), 미니맵 높이 조절, 로그인·About 창 디자인, 설정 창(로그인·단축키·자동 저장)
+10. 다중 선택·범위 선택, Ctrl+방향키 이동, Undo/Redo, 툴바 재구성과 이름표, 선택 강조 설정
 
 ## 5. 검증 상태
 
@@ -115,6 +131,7 @@
 |---|---|
 | README.md | 실행·화면·조작 방법 |
 | DEVELOPMENT_STATUS.md | 이 문서: 개발 현황과 기능 목록 |
+| DEVELOPMENT_DOCUMENT.md | 개발 문서: 구성도, 기능별 세부 구현, 설정·테스트·한계 |
 | DATABASE_SCHEMA.md | 서버 데이터베이스 테이블 정의서와 ERD |
 | LIBRARY_DESIGN.md | 블록 라이브러리·사용자 관리 설계와 1단계 구현 내용 |
 | SYNC_PLAN.md | 다중 사용자 동기화 계획과 구현 결과 |

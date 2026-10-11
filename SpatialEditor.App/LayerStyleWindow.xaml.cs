@@ -1,106 +1,56 @@
-using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
 namespace SpatialEditor.App;
 
 /// <summary>
-/// Lets the user pick a layer's line color (palette, RGB sliders or hex) and thickness, with a
-/// live preview drawn the same way the map draws lines (round joins/caps).
+/// Layer properties: name, line color/thickness and polygon fill color/opacity, with a live
+/// preview drawn the same way the map draws shapes (round joins/caps).
 /// </summary>
 public partial class LayerStyleWindow : Window
 {
-    private static readonly string[] PaletteHex =
-    {
-        "#1F77B4", "#FF7F0E", "#2CA02C", "#D62728", "#9467BD", "#8C564B",
-        "#E377C2", "#7F7F7F", "#BCBD22", "#17BECF", "#000000", "#FFFFFF"
-    };
+    private readonly string originalName;
 
-    private bool updating;
-
-    public Color SelectedColor { get; private set; }
+    public string LayerName => NameTextBox.Text.Trim();
+    public bool NameChanged => !string.Equals(LayerName, originalName, StringComparison.Ordinal);
+    public Color SelectedColor => LineColorEditor.Color;
     public double SelectedThickness { get; private set; }
+    /// <summary>Fill color, or null when the fill follows the line color.</summary>
+    public Color? SelectedFillColor => FillSameCheckBox.IsChecked == true ? null : FillColorEditor.Color;
+    /// <summary>Fill opacity 0..1.</summary>
+    public double SelectedFillOpacity => OpacitySlider.Value / 100.0;
     public bool ResetRequested { get; private set; }
 
-    public LayerStyleWindow(string layerName, Color color, double thickness)
+    public LayerStyleWindow(string layerName, Color color, double thickness, Color? fillColor, double fillOpacity)
     {
         InitializeComponent();
-        LayerNameText.Text = $"Layer: {layerName}";
-        BuildPalette();
-        SetColor(color);
+        originalName = layerName;
+        NameTextBox.Text = layerName;
+        LineColorEditor.SetColor(color);
+        FillColorEditor.SetColor(fillColor ?? color);
+        FillSameCheckBox.IsChecked = fillColor is null;
+        OpacitySlider.Value = Math.Clamp(Math.Round(fillOpacity * 100 / 5) * 5, 0, 100);
         ThicknessSlider.Value = Math.Clamp(thickness, ThicknessSlider.Minimum, ThicknessSlider.Maximum);
-        UpdatePreview();
+        SelectedThickness = ThicknessSlider.Value;
+        LineColorEditor.ColorChanged += (_, _) => UpdatePreview();
+        FillColorEditor.ColorChanged += (_, _) => UpdatePreview();
+        FillSame_Changed(this, new RoutedEventArgs());
     }
 
-    private void BuildPalette()
-    {
-        foreach (var hex in PaletteHex)
-        {
-            var color = (Color)ColorConverter.ConvertFromString(hex);
-            var swatch = new Border
-            {
-                Width = 22,
-                Height = 22,
-                Margin = new Thickness(0, 0, 6, 6),
-                Background = new SolidColorBrush(color),
-                BorderBrush = Brushes.Gray,
-                BorderThickness = new Thickness(1),
-                Cursor = Cursors.Hand,
-                ToolTip = hex
-            };
-            swatch.MouseLeftButtonDown += (_, _) => SetColor(color);
-            PalettePanel.Children.Add(swatch);
-        }
-    }
+    internal static string ToHex(Color color) => ColorEditor.ToHex(color);
 
-    private void SetColor(Color color)
+    private void FillSame_Changed(object sender, RoutedEventArgs e)
     {
-        updating = true;
-        RedSlider.Value = color.R;
-        GreenSlider.Value = color.G;
-        BlueSlider.Value = color.B;
-        HexTextBox.Text = ToHex(color);
-        updating = false;
-        SelectedColor = Color.FromRgb(color.R, color.G, color.B);
-        UpdateChannelTexts();
-        UpdatePreview();
-    }
-
-    internal static string ToHex(Color color) => $"#{color.R:X2}{color.G:X2}{color.B:X2}";
-
-    private void UpdateChannelTexts()
-    {
-        RedText.Text = ((int)RedSlider.Value).ToString(CultureInfo.InvariantCulture);
-        GreenText.Text = ((int)GreenSlider.Value).ToString(CultureInfo.InvariantCulture);
-        BlueText.Text = ((int)BlueSlider.Value).ToString(CultureInfo.InvariantCulture);
-    }
-
-    private void Channel_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (updating || HexTextBox is null || BlueText is null)
+        if (FillColorEditor is null)
         {
             return;
         }
 
-        SetColor(Color.FromRgb((byte)RedSlider.Value, (byte)GreenSlider.Value, (byte)BlueSlider.Value));
-    }
-
-    private void Hex_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        if (updating)
-        {
-            return;
-        }
-
-        var text = HexTextBox.Text.Trim();
-        if (text.Length == 7 && text[0] == '#'
-            && int.TryParse(text.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
-        {
-            SetColor(Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb));
-        }
+        FillColorEditor.IsEnabled = FillSameCheckBox.IsChecked != true;
+        FillColorEditor.Opacity = FillColorEditor.IsEnabled ? 1 : 0.4;
+        UpdatePreview();
     }
 
     private void Thickness_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -115,23 +65,35 @@ public partial class LayerStyleWindow : Window
         UpdatePreview();
     }
 
+    private void Opacity_Changed(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (OpacityText is null)
+        {
+            return;
+        }
+
+        OpacityText.Text = $"{OpacitySlider.Value:0}%";
+        UpdatePreview();
+    }
+
     private void UpdatePreview()
     {
-        if (PreviewCanvas is null || ThicknessSlider is null)
+        if (PreviewCanvas is null || ThicknessSlider is null || OpacitySlider is null
+            || FillSameCheckBox is null || FillColorEditor is null || LineColorEditor is null)
         {
             return;
         }
 
         PreviewCanvas.Children.Clear();
-        var brush = new SolidColorBrush(SelectedColor);
-        // Same stroke settings as the map: round joins and caps keep touching segments connected.
+        var stroke = new SolidColorBrush(SelectedColor);
+        var fill = SelectedFillColor ?? SelectedColor;
         var zigzag = new Polyline
         {
             Points = new PointCollection
             {
                 new Point(20, 50), new Point(70, 18), new Point(120, 50), new Point(170, 18), new Point(220, 50)
             },
-            Stroke = brush,
+            Stroke = stroke,
             StrokeThickness = ThicknessSlider.Value,
             StrokeLineJoin = PenLineJoin.Round,
             StrokeStartLineCap = PenLineCap.Round,
@@ -141,7 +103,8 @@ public partial class LayerStyleWindow : Window
         {
             Width = 60,
             Height = 40,
-            Stroke = brush,
+            Stroke = stroke,
+            Fill = new SolidColorBrush(Color.FromArgb((byte)Math.Round(SelectedFillOpacity * 255), fill.R, fill.G, fill.B)),
             StrokeThickness = ThicknessSlider.Value,
             StrokeLineJoin = PenLineJoin.Round
         };
@@ -159,6 +122,12 @@ public partial class LayerStyleWindow : Window
 
     private void Ok_Click(object sender, RoutedEventArgs e)
     {
+        if (LayerName.Length == 0)
+        {
+            MessageBox.Show(this, "Enter a layer name.", "Layer properties", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         SelectedThickness = ThicknessSlider.Value;
         DialogResult = true;
     }

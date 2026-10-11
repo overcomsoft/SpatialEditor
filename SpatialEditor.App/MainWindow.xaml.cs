@@ -134,6 +134,24 @@ public partial class MainWindow : Window
             ? style.Thickness
             : DefaultLineThickness;
 
+    private double GetLayerFillOpacity(string layerName) =>
+        connectionSettings?.LayerStyles is { } styles && styles.TryGetValue(layerName, out var style)
+            ? Math.Clamp(style.FillOpacity, 0, 1)
+            : 60.0 / 255.0;
+
+    /// <summary>Polygon fill (custom color or the line color) with the layer's fill opacity as alpha.</summary>
+    private Color GetLayerFill(string layerName)
+    {
+        var baseColor = GetLayerColor(layerName);
+        if (connectionSettings?.LayerStyles is { } styles && styles.TryGetValue(layerName, out var style)
+            && TryParseHexColor(style.FillColor, out var custom))
+        {
+            baseColor = custom;
+        }
+
+        return Color.FromArgb((byte)Math.Round(GetLayerFillOpacity(layerName) * 255), baseColor.R, baseColor.G, baseColor.B);
+    }
+
     private static bool TryParseHexColor(string? hex, out Color color)
     {
         color = default;
@@ -269,6 +287,7 @@ public partial class MainWindow : Window
             strokeWidthUpdateTimer.Stop();
             UpdateStrokeWidths();
         };
+        InitializeToolbarState();
         Loaded += MainWindow_Loaded;
     }
 
@@ -291,6 +310,7 @@ public partial class MainWindow : Window
     {
         ImportButton.IsEnabled = CanImport;
         DeleteImportButton.IsEnabled = CanImport;
+        ExportButton.IsEnabled = isConnected && Has(Permissions.DrawingExport);
         EditModeButton.IsEnabled = isConnected && Has(Permissions.DrawingEdit);
         UsersMenuItem.IsEnabled = Has(Permissions.UserManage);
         LibraryMenuItem.IsEnabled = isConnected && Has(Permissions.LibraryView);
@@ -334,20 +354,42 @@ public partial class MainWindow : Window
     /// Shows the login window (or the first-administrator setup when there are no users), forces a
     /// password change when required, and remembers the ID for next time.
     /// </summary>
-    private async Task<bool> LoginAsync()
+    private async Task<bool> LoginAsync(bool allowAutoLogin = true)
     {
         try
         {
             await using var users = new UserRepository(connectionSettings.ConnectionString);
             await users.EnsureSchemaAsync();
             var setup = !await users.HasUsersAsync();
-            var dialog = new LoginWindow(users, connectionSettings.LastLoginId, setup) { Owner = this };
-            if (dialog.ShowDialog() != true || dialog.User is null)
+            AppUser? user = null;
+            var rememberedPassword = string.Empty;
+            if (!setup && allowAutoLogin && appSettings.AutoLogin
+                && connectionSettings.LastLoginId.Length > 0 && connectionSettings.LastLoginPassword.Length > 0)
             {
-                return false;
+                var auto = await users.AuthenticateAsync(connectionSettings.LastLoginId, connectionSettings.LastLoginPassword);
+                if (auto.User is not null)
+                {
+                    user = auto.User;
+                    rememberedPassword = connectionSettings.LastLoginPassword;
+                }
+                else
+                {
+                    StatusText.Text = $"Automatic login failed: {auto.Error}";
+                }
             }
 
-            var user = dialog.User;
+            if (user is null)
+            {
+                var dialog = new LoginWindow(users, connectionSettings.LastLoginId, connectionSettings.LastLoginPassword, setup) { Owner = this };
+                if (dialog.ShowDialog() != true || dialog.User is null)
+                {
+                    return false;
+                }
+
+                user = dialog.User;
+                rememberedPassword = dialog.EnteredPassword;
+            }
+
             while (user.MustChangePassword)
             {
                 var change = new PasswordWindow("Change password", "You must set a new password before continuing.", askOld: true, allowCancel: false)
@@ -362,6 +404,7 @@ public partial class MainWindow : Window
                 try
                 {
                     await users.ChangeOwnPasswordAsync(user, change.OldPassword, change.NewPassword);
+                    rememberedPassword = change.NewPassword;
                     break;
                 }
                 catch (InvalidOperationException exception)
@@ -372,6 +415,7 @@ public partial class MainWindow : Window
 
             currentUser = user;
             connectionSettings.LastLoginId = user.LoginId;
+            connectionSettings.LastLoginPassword = appSettings.RememberPassword ? rememberedPassword : string.Empty;
             try
             {
                 await connectionSettings.SaveAsync();
@@ -400,9 +444,9 @@ public partial class MainWindow : Window
         await LoginAndLoadAsync();
     }
 
-    private async Task LoginAndLoadAsync()
+    private async Task LoginAndLoadAsync(bool allowAutoLogin = true)
     {
-        if (!await LoginAsync())
+        if (!await LoginAsync(allowAutoLogin))
         {
             ApplyUserState();
             StatusText.Text = "Not logged in. Use the Log in button.";
@@ -450,7 +494,7 @@ public partial class MainWindow : Window
     {
         if (currentUser is null)
         {
-            await LoginAndLoadAsync();
+            await LoginAndLoadAsync(allowAutoLogin: false);
             return;
         }
 
@@ -467,7 +511,7 @@ public partial class MainWindow : Window
         currentUser = null;
         ClearMapAndLayers();
         ApplyUserState();
-        await LoginAndLoadAsync();
+        await LoginAndLoadAsync(allowAutoLogin: false);
     }
 
     private async void ChangePassword_Click(object sender, RoutedEventArgs e)
@@ -1007,6 +1051,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        InitializeSettings();
         try
         {
             connectionSettings = await PostgresConnectionSettings.LoadAsync();
@@ -1290,7 +1335,7 @@ public partial class MainWindow : Window
             var path = new Path
             {
                 Data = entry.Geometry,
-                Fill = new SolidColorBrush(Color.FromArgb(60, color.R, color.G, color.B)),
+                Fill = new SolidColorBrush(GetLayerFill(layerName)),
                 Stroke = new SolidColorBrush(color)
             };
             ApplyRoundStroke(path);
@@ -1575,6 +1620,20 @@ public partial class MainWindow : Window
         UpdateSelectionCount();
     }
 
+    /// <summary>Selection outline color/thickness chosen in Settings (frozen brush, shared).</summary>
+    private Brush SelectionBrush
+    {
+        get
+        {
+            var color = TryParseHexColor(appSettings.SelectionColor, out var parsed) ? parsed : Colors.Gold;
+            var brush = new SolidColorBrush(color);
+            brush.Freeze();
+            return brush;
+        }
+    }
+
+    private double SelectionThickness => Math.Clamp(appSettings.SelectionThickness, 0.5, 8);
+
     private void HighlightFeature(SpatialFeature feature)
     {
         ClearSelectionHighlight();
@@ -1589,7 +1648,7 @@ public partial class MainWindow : Window
             NetTopologySuite.Geometries.GeometryCollection collection => new Path
             {
                 Data = BuildHighlightGeometry(collection),
-                Stroke = Brushes.Gold,
+                Stroke = SelectionBrush,
                 Fill = Brushes.Transparent,
                 StrokeLineJoin = PenLineJoin.Round,
                 StrokeStartLineCap = PenLineCap.Round,
@@ -1598,13 +1657,13 @@ public partial class MainWindow : Window
             NtsPolygon polygon => new System.Windows.Shapes.Polygon
             {
                 Points = new PointCollection(polygon.ExteriorRing.Coordinates.Select(ProjectToScreen)),
-                Stroke = Brushes.Gold,
+                Stroke = SelectionBrush,
                 Fill = Brushes.Transparent
             },
             LineString line => new Polyline
             {
                 Points = new PointCollection(line.Coordinates.Select(ProjectToScreen)),
-                Stroke = Brushes.Gold,
+                Stroke = SelectionBrush,
                 Fill = Brushes.Transparent
             },
             NetTopologySuite.Geometries.Point point => CreateHighlightMarker(ProjectToScreen(point.Coordinate)),
@@ -1619,12 +1678,12 @@ public partial class MainWindow : Window
         highlight.IsHitTestVisible = false;
         if (highlight is Ellipse)
         {
-            highlight.StrokeThickness = 3;
+            highlight.StrokeThickness = SelectionThickness;
         }
         else
         {
-            baseStrokeWidths[highlight] = 4;
-            highlight.StrokeThickness = 4 / Math.Max(mapScale.ScaleX, 0.1);
+            baseStrokeWidths[highlight] = SelectionThickness;
+            highlight.StrokeThickness = SelectionThickness / Math.Max(mapScale.ScaleX, 0.1);
         }
 
         Panel.SetZIndex(highlight, 100000);
@@ -1658,10 +1717,10 @@ public partial class MainWindow : Window
         return streamGeometry;
     }
 
-    private static Shape CreateHighlightMarker(System.Windows.Point center)
+    private Shape CreateHighlightMarker(System.Windows.Point center)
     {
         const double r = 7;
-        var ellipse = new Ellipse { Width = r * 2, Height = r * 2, Stroke = Brushes.Gold, Fill = Brushes.Transparent };
+        var ellipse = new Ellipse { Width = r * 2, Height = r * 2, Stroke = SelectionBrush, Fill = Brushes.Transparent };
         Canvas.SetLeft(ellipse, center.X - r);
         Canvas.SetTop(ellipse, center.Y - r);
         return ellipse;
@@ -1812,6 +1871,10 @@ public partial class MainWindow : Window
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Show only this layer", "Icon.ShowAll", () => ShowOnlyLayer(layerName)));
         menu.Items.Add(Item("Hide this layer", "Icon.HideAll", () => SetLayerChecked(layerName, false)));
+        menu.Items.Add(new Separator());
+        var deleteItem = Item("Delete this layer...", "Icon.DeleteObject", () => _ = DeleteLayerAsync(layerName));
+        menu.Opened += (_, _) => deleteItem.IsEnabled = Has(Permissions.DrawingDelete);
+        menu.Items.Add(deleteItem);
         return menu;
     }
 
@@ -2095,28 +2158,44 @@ public partial class MainWindow : Window
 
     private async Task OpenLayerStyleAsync(string layerName)
     {
-        var dialog = new LayerStyleWindow(layerName, GetLayerColor(layerName), GetLayerThickness(layerName)) { Owner = this };
+        var existing = connectionSettings.LayerStyles.TryGetValue(layerName, out var current) ? current : null;
+        Color? currentFill = TryParseHexColor(existing?.FillColor, out var fillColor) ? fillColor : null;
+        var dialog = new LayerStyleWindow(layerName, GetLayerColor(layerName), GetLayerThickness(layerName),
+            currentFill, GetLayerFillOpacity(layerName)) { Owner = this };
         if (dialog.ShowDialog() != true)
         {
             return;
         }
 
+        var targetName = layerName;
+        if (dialog.NameChanged)
+        {
+            var renamed = await RenameLayerAsync(layerName, dialog.LayerName);
+            if (renamed is null)
+            {
+                return;
+            }
+
+            targetName = renamed;
+        }
+
         if (dialog.ResetRequested)
         {
-            connectionSettings.LayerStyles.Remove(layerName);
-            layerColors[layerName] = defaultLayerColors.TryGetValue(layerName, out var original) ? original : LayerPalette[0];
+            connectionSettings.LayerStyles.Remove(targetName);
+            layerColors[targetName] = defaultLayerColors.TryGetValue(targetName, out var original) ? original : LayerPalette[0];
         }
         else
         {
-            connectionSettings.LayerStyles[layerName] = new LayerStyleSetting
+            connectionSettings.LayerStyles[targetName] = new LayerStyleSetting
             {
                 Color = LayerStyleWindow.ToHex(dialog.SelectedColor),
-                Thickness = dialog.SelectedThickness
+                Thickness = dialog.SelectedThickness,
+                FillColor = dialog.SelectedFillColor is { } fill ? LayerStyleWindow.ToHex(fill) : null,
+                FillOpacity = dialog.SelectedFillOpacity
             };
-            layerColors[layerName] = dialog.SelectedColor;
+            layerColors[targetName] = dialog.SelectedColor;
         }
 
-        ApplyLayerStyle(layerName);
         try
         {
             await connectionSettings.SaveAsync();
@@ -2124,6 +2203,81 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             StatusText.Text = $"Style applied, but saving it failed: {exception.Message}";
+        }
+
+        if (targetName != layerName)
+        {
+            // Rows were renamed in the database; redraw everything under the new name.
+            await ReloadForSyncAsync();
+            StatusText.Text = $"Layer renamed to '{targetName}'.";
+        }
+        else
+        {
+            ApplyLayerStyle(targetName);
+        }
+    }
+
+    /// <summary>
+    /// Renames a layer in the database and moves the in-memory/saved per-layer state to the new
+    /// name. Returns the new name, or null when the rename was refused or failed.
+    /// </summary>
+    private async Task<string?> RenameLayerAsync(string oldName, string newName)
+    {
+        if (!Require(Permissions.DrawingEdit, "rename layers") || !CanReloadLayers())
+        {
+            return null;
+        }
+
+        try
+        {
+            connectionSettings = ReadConnectionSettingsFromUi();
+            await using (var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString))
+            {
+                if (await repository.LayerExistsAsync(newName))
+                {
+                    MessageBox.Show(this, $"A layer named \"{newName}\" already exists. Choose a different name.",
+                        "Rename layer", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return null;
+                }
+
+                var count = await repository.RenameLayerAsync(oldName, newName, changeContext: CurrentChangeContext);
+                importLogger.Write($"RENAME layer={oldName} -> {newName} rows={count}");
+                await AuditAsync("layer.rename", "layer", oldName, $"-> {newName} ({count} object(s))");
+            }
+
+            Move(connectionSettings.LayerStyles);
+            Move(layerColors);
+            Move(defaultLayerColors);
+            if (hiddenLayers.Remove(oldName))
+            {
+                hiddenLayers.Add(newName);
+            }
+
+            if (activeLayerFilter is not null)
+            {
+                for (var i = 0; i < activeLayerFilter.Count; i++)
+                {
+                    if (string.Equals(activeLayerFilter[i], oldName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        activeLayerFilter[i] = newName;
+                    }
+                }
+            }
+
+            return newName;
+        }
+        catch (Exception exception)
+        {
+            StatusText.Text = $"Rename layer failed: {exception.Message}";
+            return null;
+        }
+
+        void Move<T>(Dictionary<string, T> map)
+        {
+            if (map.Remove(oldName, out var value))
+            {
+                map[newName] = value;
+            }
         }
     }
 
@@ -2153,7 +2307,7 @@ public partial class MainWindow : Window
                     // Polygon fills are translucent; point markers are solid.
                     shape.Fill = shape.Stroke is null
                         ? new SolidColorBrush(color)
-                        : new SolidColorBrush(Color.FromArgb(60, color.R, color.G, color.B));
+                        : new SolidColorBrush(GetLayerFill(layerName));
                 }
             }
         }
@@ -2197,59 +2351,6 @@ public partial class MainWindow : Window
     private void MapCanvas_MouseLeave(object sender, System.Windows.Input.MouseEventArgs e) =>
         CursorCoordText.Text = "X -    Y -";
 
-    private void HandleShortcut(System.Windows.Input.KeyEventArgs e)
-    {
-        if (System.Windows.Input.Keyboard.FocusedElement is TextBox or PasswordBox)
-        {
-            return;
-        }
-
-        var ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
-        var alt = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) != 0;
-
-        // The Korean IME reports letter keys as ImeProcessed; the real key is in ImeProcessedKey.
-        var key = e.Key == System.Windows.Input.Key.ImeProcessed ? e.ImeProcessedKey : e.Key;
-        if (key == System.Windows.Input.Key.R && !ctrl && !alt && isEditMode && selectedEditIds.Count > 0)
-        {
-            // "r" turns clockwise, "R" (the typed capital: Shift, or Caps Lock without Shift) counter-clockwise.
-            e.Handled = true;
-            if (!e.IsRepeat)
-            {
-                var shift = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0;
-                var capital = shift ^ System.Windows.Input.Keyboard.IsKeyToggled(System.Windows.Input.Key.CapsLock);
-                RotateSelected(clockwise: !capital);
-            }
-
-            return;
-        }
-
-        if (ctrl && e.Key == System.Windows.Input.Key.S && isEditMode && SaveEditsButton.IsEnabled)
-        {
-            e.Handled = true;
-            SaveEdits_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && e.Key == System.Windows.Input.Key.D && isEditMode && DuplicateButton.IsEnabled)
-        {
-            e.Handled = true;
-            DuplicateSelected_Click(this, new RoutedEventArgs());
-        }
-        else if (ctrl && e.Key == System.Windows.Input.Key.G && isEditMode && GroupButton.IsEnabled)
-        {
-            e.Handled = true;
-            GroupSelected_Click(this, new RoutedEventArgs());
-        }
-        else if (!ctrl && e.Key == System.Windows.Input.Key.Delete && isEditMode && DeleteObjectButton.IsEnabled)
-        {
-            e.Handled = true;
-            DeleteSelected_Click(this, new RoutedEventArgs());
-        }
-        else if (System.Windows.Input.Keyboard.Modifiers == System.Windows.Input.ModifierKeys.None && e.Key == System.Windows.Input.Key.F)
-        {
-            e.Handled = true;
-            FitView_Click(this, new RoutedEventArgs());
-        }
-    }
-
     private void DeselectAll_Click(object sender, RoutedEventArgs e)
     {
         if (isEditMode)
@@ -2268,12 +2369,7 @@ public partial class MainWindow : Window
     private void About_Click(object sender, RoutedEventArgs e)
     {
         var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "1.0";
-        MessageBox.Show(this,
-            "OmniDT SE (Spatial Editor) " + version + Environment.NewLine +
-            "Build " + BuildInfo.Number + " (" + BuildInfo.Display + ")" + Environment.NewLine + Environment.NewLine +
-            "PostGIS spatial data editor for CAD equipment blocks." + Environment.NewLine +
-            "Import DXF, edit block objects, manage users and permissions.",
-            "About OmniDT SE", MessageBoxButton.OK, MessageBoxImage.Information);
+        new AboutWindow(version, "Build " + BuildInfo.Number + " (" + BuildInfo.Display + ")") { Owner = this }.ShowDialog();
     }
 
     private double leftPanelWidth = 250;
@@ -2439,8 +2535,8 @@ public partial class MainWindow : Window
         {
             if (isEditMode)
             {
-                // Dragging on empty space draws a selection box (Ctrl adds to the selection).
-                var additive = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
+                // Dragging on empty space draws a selection box (Shift or Ctrl adds to the selection).
+                var additive = IsAdditiveSelectKeyDown();
                 BeginBoxSelect(e.GetPosition(EditableObjectsCanvas), additive);
                 return;
             }
@@ -2652,6 +2748,7 @@ public partial class MainWindow : Window
             }
 
             pendingEdits.Clear();
+            ClearUndoHistory();
             ApplyEditMask(editableSourcesById.Values.Select(source => source.LayerName ?? "(no layer)").Distinct(StringComparer.OrdinalIgnoreCase));
 
             // A selection highlight left over from view mode is drawn on the base map at the saved
@@ -2708,6 +2805,7 @@ public partial class MainWindow : Window
         editableShapesById.Clear();
         editableDetailPathById.Clear();
         pendingEdits.Clear();
+        ClearUndoHistory();
         editableSourcesById.Clear();
         selectedEditId = null;
         selectedEditIds.Clear();
@@ -2849,8 +2947,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void ApplyEditableShapeStyle(Shape shape, bool isSelected, bool isNew)
     {
-        shape.Stroke = isSelected ? Brushes.Gold : (isNew ? Brushes.MediumSeaGreen : Brushes.DodgerBlue);
-        var width = isSelected ? 2.0 : 1.0;
+        shape.Stroke = isSelected ? SelectionBrush : (isNew ? Brushes.MediumSeaGreen : Brushes.DodgerBlue);
+        var width = isSelected ? SelectionThickness : 1.0;
         // Registered so the outline keeps a constant on-screen width when zooming.
         baseStrokeWidths[shape] = width;
         shape.StrokeThickness = width / Math.Max(mapScale.ScaleX, 0.1);
@@ -2935,8 +3033,8 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-        var ctrl = (System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0;
-        // Ctrl+click toggles membership without dragging; a plain click on an already selected
+        var ctrl = IsAdditiveSelectKeyDown();
+        // Shift/Ctrl+click toggles membership without dragging; a plain click on an already selected
         // object keeps the group so it can be dragged as a whole.
         SelectEditableObject(id, additive: ctrl, keepGroup: true);
         if (!ctrl && !isVertexEditMode)
@@ -2989,6 +3087,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        PushUndo();
         // Every selected object turns about the shared center, so a group rotates rigidly.
         foreach (var selectedId in selectedEditIds.ToArray())
         {
@@ -3002,6 +3101,69 @@ public partial class MainWindow : Window
         RenderEditableLayerObjects();
         SaveEditsButton.IsEnabled = true;
         EditStatusText.Text = clockwise ? "Rotated 90° clockwise." : "Rotated 90° counter-clockwise.";
+    }
+
+    /// <summary>
+    /// Ctrl+Arrow keys nudge the selected objects (Ctrl+Shift: 10x farther). The step is one grid cell
+    /// (10 units) while "snap to grid" is on, otherwise 1 unit. Returns true when the key was used.
+    /// </summary>
+    private bool TryNudgeFromKey(System.Windows.Input.KeyEventArgs e)
+    {
+        var modifiers = System.Windows.Input.Keyboard.Modifiers;
+        if ((modifiers & System.Windows.Input.ModifierKeys.Control) == 0
+            || (modifiers & (System.Windows.Input.ModifierKeys.Alt | System.Windows.Input.ModifierKeys.Windows)) != 0
+            || System.Windows.Input.Keyboard.FocusedElement is TextBox or PasswordBox or ComboBox or DataGrid)
+        {
+            return false;
+        }
+
+        var (dirX, dirY) = e.Key switch
+        {
+            System.Windows.Input.Key.Left => (-1, 0),
+            System.Windows.Input.Key.Right => (1, 0),
+            System.Windows.Input.Key.Up => (0, 1),
+            System.Windows.Input.Key.Down => (0, -1),
+            _ => (0, 0)
+        };
+        if (dirX == 0 && dirY == 0)
+        {
+            return false;
+        }
+
+        e.Handled = true;
+        if (selectedEditIds.Count == 0 || editDragKind != EditDragKind.None)
+        {
+            return true;
+        }
+
+        var step = isGridSnapEnabled ? GridSnapSizeWorldUnits : 1.0;
+        if ((modifiers & System.Windows.Input.ModifierKeys.Shift) != 0)
+        {
+            step *= 10;
+        }
+
+        var dx = dirX * step;
+        var dy = dirY * step;
+        var translation = AffineTransformation.TranslationInstance(dx, dy);
+        if (RejectEquipmentOverlap(selectedEditIds, geometry => translation.Transform(geometry)))
+        {
+            return true;
+        }
+
+        PushUndo();
+        foreach (var id in selectedEditIds.ToArray())
+        {
+            var edit = GetOrCreateEdit(id);
+            edit.CurrentGeometry = translation.Transform(edit.CurrentGeometry);
+            edit.CurrentOuterGeometry = translation.Transform(edit.CurrentOuterGeometry);
+            ApplyPlacementMove(edit, dx, dy);
+            edit.HasChanges = true;
+        }
+
+        RenderEditableLayerObjects();
+        SaveEditsButton.IsEnabled = true;
+        EditStatusText.Text = $"Moved {selectedEditIds.Count} object(s) by ({dx:0.##}, {dy:0.##}).";
+        return true;
     }
 
     private void SnapToGridCheckBox_Changed(object sender, RoutedEventArgs e)
@@ -3157,6 +3319,7 @@ public partial class MainWindow : Window
                     return;
                 }
 
+                PushUndo();
                 foreach (var selectedId in selectedEditIds.ToArray())
                 {
                     var moved = GetOrCreateEdit(selectedId);
@@ -3174,6 +3337,73 @@ public partial class MainWindow : Window
 
         RenderEditableLayerObjects();
         SaveEditsButton.IsEnabled = true;
+    }
+
+    /// <summary>Shift or Ctrl held: clicks and selection boxes add to / toggle the current selection.</summary>
+    private static bool IsAdditiveSelectKeyDown() =>
+        (System.Windows.Input.Keyboard.Modifiers & (System.Windows.Input.ModifierKeys.Control | System.Windows.Input.ModifierKeys.Shift)) != 0;
+
+    /// <summary>True when the segment a-b touches the rectangle (either end inside, or it crosses an edge).</summary>
+    private static bool SegmentTouchesRect(Rect rect, System.Windows.Point a, System.Windows.Point b)
+    {
+        if (rect.Contains(a) || rect.Contains(b))
+        {
+            return true;
+        }
+
+        // Liang-Barsky clipping of the segment against the rectangle.
+        double t0 = 0, t1 = 1;
+        var dx = b.X - a.X;
+        var dy = b.Y - a.Y;
+        bool Clip(double p, double q)
+        {
+            if (p == 0)
+            {
+                return q >= 0;
+            }
+
+            var r = q / p;
+            if (p < 0)
+            {
+                if (r > t1) { return false; }
+                if (r > t0) { t0 = r; }
+            }
+            else
+            {
+                if (r < t0) { return false; }
+                if (r < t1) { t1 = r; }
+            }
+
+            return true;
+        }
+
+        return Clip(-dx, a.X - rect.Left) && Clip(dx, rect.Right - a.X)
+            && Clip(-dy, a.Y - rect.Top) && Clip(dy, rect.Bottom - a.Y);
+    }
+
+    /// <summary>Crossing test: any outline point inside the box, or any outline edge touching it.</summary>
+    private static bool OutlineTouchesRect(Rect rect, System.Windows.Shapes.Polygon shape)
+    {
+        var points = shape.Points;
+        if (points.Count == 0)
+        {
+            return false;
+        }
+
+        if (points.Count == 1)
+        {
+            return rect.Contains(points[0]);
+        }
+
+        for (var i = 0; i < points.Count; i++)
+        {
+            if (SegmentTouchesRect(rect, points[i], points[(i + 1) % points.Count]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void BeginBoxSelect(System.Windows.Point start, bool additive)
@@ -3198,8 +3428,10 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Window selection: an object is picked only when every one of its outline points lies inside
-    /// the rubber band, so a huge layer outline is not grabbed just because the box overlaps it.
+    /// Rubber-band selection. Equipment (block instances) is picked when the box touches it at all
+    /// (crossing selection: inside, overlapping or crossing its outline). Other objects, e.g. large
+    /// layer outlines, are picked only when entirely inside the box so a big outline is not grabbed
+    /// just because the box overlaps it. Shift/Ctrl adds to the existing selection.
     /// </summary>
     private void FinalizeBoxSelect(System.Windows.Point current)
     {
@@ -3221,7 +3453,10 @@ public partial class MainWindow : Window
         }
 
         var picked = editableShapesById
-            .Where(pair => pair.Value.Count > 0 && pair.Value.All(shape => shape.Points.All(rect.Contains)))
+            .Where(pair => pair.Value.Count > 0 && (IsEncodedBlockInstanceId(pair.Key)
+                || (pendingEdits.TryGetValue(pair.Key, out var pickEdit) && pickEdit.Source.FeatureType == "block_instance")
+                    ? pair.Value.Any(shape => OutlineTouchesRect(rect, shape))
+                    : pair.Value.All(shape => shape.Points.All(rect.Contains))))
             .Select(pair => pair.Key)
             .ToList();
         if (picked.Count == 0)
@@ -3341,7 +3576,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Blocks saving when any new or changed equipment still overlaps another one.</summary>
-    private bool HasEquipmentOverlapBeforeSave()
+    private bool HasEquipmentOverlapBeforeSave(bool silent = false)
     {
         var areas = EquipmentAreas();
         foreach (var (id, bounds) in areas)
@@ -3355,7 +3590,11 @@ public partial class MainWindow : Window
             {
                 if (otherId != id && RectanglesOverlap(bounds, otherBounds))
                 {
-                    ReportEquipmentOverlap(id, otherId, "겹친 설비를 옮긴 뒤 다시 저장하세요. 저장하지 않았습니다.");
+                    if (!silent)
+                    {
+                        ReportEquipmentOverlap(id, otherId, "겹친 설비를 옮긴 뒤 다시 저장하세요. 저장하지 않았습니다.");
+                    }
+
                     return true;
                 }
             }
@@ -3447,7 +3686,7 @@ public partial class MainWindow : Window
         }
 
         PropertyHintText.Text = isMulti
-            ? "Multi-selection: drag any selected shape to move all, click the gold handle or press r to rotate all 90° clockwise (Shift+R: counter-clockwise).\nCtrl+click toggles an object, drag on empty space to box-select.\nGroup turns the selection into one block."
+            ? "Multi-selection: drag any selected shape to move all, click the gold handle or press r to rotate all 90° clockwise (Shift+R: counter-clockwise).\nShift/Ctrl+click toggles an object; drag a box on empty space to select every object it touches (hold Shift/Ctrl to add).\nGroup turns the selection into one block."
             : isBlock
                 ? "Block instance: moves, rotates, duplicates and deletes as one object.\nDrag the shape to move it.\nr: rotate 90° clockwise, Shift+R: counter-clockwise (or click the gold handle)."
                 : "Drag the shape to move it.\nr: rotate 90° clockwise, Shift+R: counter-clockwise (or click the gold handle).\nToggle Vertex edit to reshape the outline.";
@@ -3704,6 +3943,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        PushUndo();
         var newRing = rings[ringIndex].Where((_, index) => index != pointIndex).ToArray();
         edit.CurrentOuterGeometry = RebuildOuterGeometry(edit.CurrentOuterGeometry, ringIndex, newRing);
         edit.HasChanges = true;
@@ -3733,6 +3973,7 @@ public partial class MainWindow : Window
         var newRing = ring.ToList();
         newRing.Insert(afterPointIndex + 1, midWorld);
 
+        PushUndo();
         edit.CurrentOuterGeometry = RebuildOuterGeometry(edit.CurrentOuterGeometry, ringIndex, newRing.ToArray());
         edit.HasChanges = true;
         RenderEditableLayerObjects();
@@ -3812,6 +4053,7 @@ public partial class MainWindow : Window
 
         var snapped = SnapToNearbyVertex(current, id, ringIndex, pointIndex);
         var worldPoint = UnprojectFromScreen(snapped);
+        PushUndo();
 
         var rings = GetOpenExteriorRings(edit.CurrentOuterGeometry);
         if (ringIndex < rings.Length)
@@ -3831,6 +4073,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        PushUndo();
         var offset = 10.0 / Math.Max(renderedScale, 0.0001);
         var translation = AffineTransformation.TranslationInstance(offset, -offset);
         var newIds = new List<long>();
@@ -3917,6 +4160,7 @@ public partial class MainWindow : Window
             ["grouped_member_count"] = edits.Count.ToString(Invariant)
         };
 
+        PushUndo();
         var groupId = nextTempId--;
         var groupSource = new EditableLayerObject(
             groupId, "block_instance", blockName, first.SourceFile ?? "manual", first.LayerName,
@@ -3980,6 +4224,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        PushUndo();
         foreach (var id in selectedEditIds.ToArray())
         {
             if (pendingEdits.TryGetValue(id, out var edit) && edit.IsNew)
@@ -3998,15 +4243,26 @@ public partial class MainWindow : Window
         EditStatusText.Text = "Marked for deletion. Save changes to apply.";
     }
 
-    private async void SaveEdits_Click(object sender, RoutedEventArgs e)
+    private async void SaveEdits_Click(object sender, RoutedEventArgs e) => await SaveEditsAsync(auto: false);
+
+    /// <summary>
+    /// Saves the pending edits. <paramref name="auto"/> (auto-save timer) works silently: it skips instead of
+    /// showing dialogs, and afterwards re-enters edit mode on the same layer so the user can keep editing.
+    /// </summary>
+    private async Task SaveEditsAsync(bool auto)
     {
-        if (!Require(Permissions.DrawingEdit, "save drawing changes"))
+        if (auto ? !Has(Permissions.DrawingEdit) : !Require(Permissions.DrawingEdit, "save drawing changes"))
         {
             return;
         }
 
-        if (HasEquipmentOverlapBeforeSave())
+        if (HasEquipmentOverlapBeforeSave(silent: auto))
         {
+            if (auto)
+            {
+                StatusText.Text = "Auto-save skipped: equipment overlaps. Fix the overlap and save manually.";
+            }
+
             return;
         }
 
@@ -4062,11 +4318,21 @@ public partial class MainWindow : Window
                 summary += $" {conflictIds.Count} object(s) were changed by someone else in the meantime and were NOT overwritten (ids: {string.Join(", ", conflictIds)}) — reload shows their latest state.";
             }
 
+            var editLayer = activeEditLayerName;
             ExitEditMode();
             StatusText.Text = summary;
-            await AuditAsync("drawing.save", "drawing", null,
+            await AuditAsync(auto ? "drawing.autosave" : "drawing.save", "drawing", null,
                 $"{appliedUpdates} updated, {inserts.Count} added, {appliedDeletes} deleted, {conflictIds.Count} conflict(s)");
-            await LoadImportedPolygonsAsync();
+            if (auto)
+            {
+                await ReloadForSyncAsync();
+                await EnterEditModeForLayerAsync(editLayer);
+                StatusText.Text = $"Auto-saved at {DateTime.Now:HH:mm:ss}. {summary}";
+            }
+            else
+            {
+                await LoadImportedPolygonsAsync();
+            }
         }
         catch (PostgresException exception)
         {
@@ -4089,6 +4355,11 @@ public partial class MainWindow : Window
     /// </summary>
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (isEditMode && TryNudgeFromKey(e))
+        {
+            return;
+        }
+
         if (e.Key != System.Windows.Input.Key.Escape || !isEditMode)
         {
             HandleShortcut(e);
@@ -4096,27 +4367,7 @@ public partial class MainWindow : Window
         }
 
         e.Handled = true;
-        if (editDragKind != EditDragKind.None)
-        {
-            editDragKind = EditDragKind.None;
-            draggingVertex = null;
-            editShapeSnapshot.Clear();
-            editHandleSnapshot = null;
-            boxSelectRectangle = null;
-            MapCanvas.ReleaseMouseCapture();
-        }
-
-        if (HasPendingEdits())
-        {
-            pendingEdits.Clear();
-            DeselectEditableObject();
-            RenderEditableLayerObjects();
-            EditStatusText.Text = "Restored to the saved state. Unsaved edits were discarded.";
-            return;
-        }
-
-        DeselectEditableObject();
-        RenderEditableLayerObjects();
+        CancelEdits();
     }
 
     private void DiscardEdits_Click(object sender, RoutedEventArgs e)

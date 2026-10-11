@@ -82,7 +82,7 @@
 
     <Style x:Key="ToolbarSeparator" TargetType="Border">
         <Setter Property="Width" Value="1" />
-        <Setter Property="Height" Value="26" />
+        <Setter Property="Height" Value="38" />
         <Setter Property="Margin" Value="5,4" />
         <Setter Property="Background" Value="#C9D2DA" />
     </Style>
@@ -93,4 +93,16 @@
         <Setter Property="BorderThickness" Value="0,0,0,1" />
         <Setter Property="Padding" Value="8,3" />
     </Style>
+    <!-- Toolbar buttons with a two-character caption under the icon. -->
+    <Style x:Key="ToolButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+        <Setter Property="Width" Value="42" />
+        <Setter Property="Height" Value="50" />
+        <Setter Property="Padding" Value="2" />
+    </Style>
+    <Style x:Key="ToolToggleButton" TargetType="ToggleButton" BasedOn="{StaticResource IconToggleButton}">
+        <Setter Property="Width" Value="42" />
+        <Setter Property="Height" Value="50" />
+        <Setter Property="Padding" Value="2" />
+    </Style>
+
 </ResourceDictionary>
