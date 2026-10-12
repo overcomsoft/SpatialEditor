@@ -108,6 +108,21 @@
                     <MenuItem.Icon><Image Source="{StaticResource Icon.HideAll}" Width="16" Height="16" /></MenuItem.Icon>
                 </MenuItem>
             </MenuItem>
+            <MenuItem Header="_Version">
+                <MenuItem Header="_Save version…" Click="SaveVersion_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Version}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="Version _manager…" Click="VersionManager_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.History}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="C_lear comparison" Click="ClearComparison_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Compare}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+                <Separator />
+                <MenuItem Header="_Drawings…" Click="LayoutManager_Click">
+                    <MenuItem.Icon><Image Source="{StaticResource Icon.Layout}" Width="16" Height="16" /></MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
             <MenuItem Header="_Tools">
                 <MenuItem Header="_Validate geometry" Click="Validate_Click">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Validate}" Width="16" Height="16" /></MenuItem.Icon>
@@ -122,6 +137,7 @@
                 <MenuItem x:Name="RegisterLibraryMenuItem" Header="_Register selected block in library..." Click="RegisterInLibrary_Click" IsEnabled="False">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.Group}" Width="16" Height="16" /></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="_Copy screen to clipboard" Click="CopyScreen_Click" />
                 <Separator />
                 <MenuItem x:Name="SettingsMenuItem" Header="_Settings..." Click="OpenSettings_Click" />
             </MenuItem>
@@ -138,6 +154,7 @@
                 </MenuItem>
             </MenuItem>
             <MenuItem Header="_Help">
+                <MenuItem Header="User _manual (PDF)" Click="UserManual_Click" />
                 <MenuItem Header="_About OmniDT SE" Click="About_Click">
                     <MenuItem.Icon><Image Source="{StaticResource Icon.About}" Width="16" Height="16" /></MenuItem.Icon>
                 </MenuItem>
@@ -312,6 +329,33 @@
 
                 <Border Style="{StaticResource ToolbarSeparator}" />
 
+                <Button x:Name="VersionSaveButton" Style="{StaticResource ToolButton}" Click="SaveVersion_Click" IsEnabled="False" ToolTip="Save the drawing as a new version (Ctrl+Shift+S)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Version}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="버전" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="VersionManagerButton" Style="{StaticResource ToolButton}" Click="VersionManager_Click" IsEnabled="False" ToolTip="Version Manager: list, compare, restore, branch">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.History}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="이력" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="CompareButton" Style="{StaticResource ToolButton}" Click="CompareToolbar_Click" IsEnabled="False" ToolTip="Compare versions (opens the Version Manager); click again to clear the comparison from the 2D view">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Compare}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="비교" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button x:Name="LayoutButton" Style="{StaticResource ToolButton}" Click="LayoutManager_Click" IsEnabled="False" ToolTip="Drawings: open, create, rename or delete a drawing (A/B alternatives)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.Layout}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="도면" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+
+                <Border Style="{StaticResource ToolbarSeparator}" />
+
                 <Button x:Name="LibraryButton" Style="{StaticResource ToolButton}" Click="OpenLibrary_Click" IsEnabled="False" ToolTip="Block library...">
                     <StackPanel>
                         <Image Source="{StaticResource Icon.Library}" Width="24" Height="24" HorizontalAlignment="Center" />
@@ -322,6 +366,12 @@
                     <StackPanel>
                         <Image Source="{StaticResource Icon.RegisterLibrary}" Width="24" Height="24" HorizontalAlignment="Center" />
                         <TextBlock Text="등록" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
+                    </StackPanel>
+                </Button>
+                <Button Style="{StaticResource ToolButton}" Click="CopyScreen_Click" ToolTip="Copy the whole program window to the clipboard (Ctrl+P)">
+                    <StackPanel>
+                        <Image Source="{StaticResource Icon.CopyScreen}" Width="24" Height="24" HorizontalAlignment="Center" />
+                        <TextBlock Text="캡처" FontSize="10" TextAlignment="Center" Margin="0,1,0,0" />
                     </StackPanel>
                 </Button>
                 <Button Style="{StaticResource ToolButton}" Click="OpenSettings_Click" ToolTip="Settings... (login, shortcuts, auto-save)">
@@ -351,6 +401,11 @@
             <Separator DockPanel.Dock="Left" />
             <StatusBarItem DockPanel.Dock="Left">
                 <TextBlock x:Name="UserSummaryText" Text="Not logged in" />
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Left" />
+            <StatusBarItem DockPanel.Dock="Left">
+                <TextBlock x:Name="LayoutStatusText" Text="" Cursor="Hand" MouseLeftButtonUp="LayoutStatus_Click"
+                           ToolTip="클릭하면 버전 관리자가 열립니다" />
             </StatusBarItem>
             <Separator DockPanel.Dock="Left" />
             <StatusBarItem DockPanel.Dock="Left">

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using NetTopologySuite.Geometries;
+using SpatialEditor.Domain;
 
 namespace SpatialEditor.App;
 
@@ -23,6 +24,11 @@ public partial class MainWindow
         RedoButton.IsEnabled = isEditMode && redoStack.Count > 0;
         RotateCwButton.IsEnabled = isEditMode && selectedEditIds.Count > 0;
         RotateCcwButton.IsEnabled = RotateCwButton.IsEnabled;
+        var canView = isConnected && currentUser is not null && Has(Permissions.DrawingView);
+        VersionManagerButton.IsEnabled = canView;
+        LayoutButton.IsEnabled = canView;
+        VersionSaveButton.IsEnabled = canView && Has(Permissions.DrawingEdit);
+        CompareButton.IsEnabled = canView;
         LibraryButton.IsEnabled = LibraryMenuItem.IsEnabled;
         RegisterLibraryButton.IsEnabled = RegisterLibraryMenuItem.IsEnabled && (isEditMode ? selectedEditIds.Count > 0 : selectedFeature is not null);
     }

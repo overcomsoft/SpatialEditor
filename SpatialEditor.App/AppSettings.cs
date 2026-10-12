@@ -30,6 +30,9 @@ public sealed class AppSettings
     /// <summary>Outline thickness of selected objects in screen pixels.</summary>
     public double SelectionThickness { get; set; } = 1.5;
 
+    /// <summary>Keep every edit save as an automatic version of the drawing (kind "auto").</summary>
+    public bool AutoVersionOnSave { get; set; } = true;
+
     public static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "SpatialEditor",
@@ -43,7 +46,8 @@ public sealed class AppSettings
         AutoSaveEnabled = AutoSaveEnabled,
         AutoSaveMinutes = AutoSaveMinutes,
         SelectionColor = SelectionColor,
-        SelectionThickness = SelectionThickness
+        SelectionThickness = SelectionThickness,
+        AutoVersionOnSave = AutoVersionOnSave
     };
 
     public static AppSettings Load()

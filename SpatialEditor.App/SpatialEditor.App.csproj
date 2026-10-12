@@ -1,6 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Used by the program-area capture (Ctrl+P) -->
+    <PackageReference Include="System.Drawing.Common" Version="8.0.10" />
     <ProjectReference Include="..\SpatialEditor.Domain\SpatialEditor.Domain.csproj" />
     <ProjectReference Include="..\SpatialEditor.Geometry\SpatialEditor.Geometry.csproj" />
     <ProjectReference Include="..\SpatialEditor.Infrastructure\SpatialEditor.Infrastructure.csproj" />
@@ -13,6 +15,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <AssemblyName>OmniDT-SE</AssemblyName>
+    <RootNamespace>SpatialEditor.App</RootNamespace>
     <ApplicationIcon>Resources\app.ico</ApplicationIcon>
     <!-- Product name shown in the exe's file properties -->
     <Product>OmniDT SE (Spatial Editor)</Product>
@@ -34,6 +38,8 @@
 
   <ItemGroup>
     <Resource Include="Resources\app.ico" />
+    <!-- User manual shown by Help > User manual (PDF); regenerate with tools\build-manual-pdf.ps1 -->
+    <Content Include="..\docs\USER_MANUAL.pdf" Link="Manual\UserManual.pdf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

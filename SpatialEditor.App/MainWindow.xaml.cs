@@ -273,6 +273,8 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         BuildText.Text = BuildInfo.Label;
+        // Copy-screen must work while a dialog is open, so it is handled for every window, with or without Shift/Caps Lock.
+        EventManager.RegisterClassHandler(typeof(Window), System.Windows.Input.Keyboard.PreviewKeyDownEvent, new System.Windows.Input.KeyEventHandler(CopyScreenKeyDown));
         mapScale.Changed += (_, _) => ScheduleMiniMapViewport();
         mapTranslation.Changed += (_, _) => ScheduleMiniMapViewport();
         MapCanvas.SizeChanged += (_, _) => ScheduleMiniMapViewport();
@@ -439,6 +441,7 @@ public partial class MainWindow : Window
     private async Task CompleteConnectionAsync()
     {
         currentUser = null;
+        activeLayoutId = 1;
         ClearMapAndLayers();
         SetConnected(true);
         await LoginAndLoadAsync();
@@ -456,6 +459,11 @@ public partial class MainWindow : Window
         ApplyUserState();
         if (Has(Permissions.DrawingView))
         {
+            if (!await EnsureDrawingSchemasAsync())
+            {
+                return;
+            }
+
             await StartSyncAsync();
             await PromptLayerSelectionAndLoadAsync();
         }
@@ -473,6 +481,7 @@ public partial class MainWindow : Window
             ExitEditMode();
         }
 
+        ClearDiffOverlay();
         MapLayerCanvas.Children.Clear();
         importedFeatures.Clear();
         blockGroups = null;
@@ -715,7 +724,7 @@ public partial class MainWindow : Window
         {
             var coordinator = new SyncCoordinator(
                 connectionSettings.ConnectionString, sessionId,
-                () => layerChecksByName.Keys.ToArray());
+                () => layerChecksByName.Keys.ToArray(), () => activeLayoutId);
             coordinator.CheckRequested += () => _ = CheckForSyncChangesAsync();
             coordinator.ConnectionChanged += _ => UpdateSyncStatus();
             await coordinator.StartAsync();
@@ -1081,7 +1090,7 @@ public partial class MainWindow : Window
             ShowBusy("Connecting to PostgreSQL...");
             try
             {
-                await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+                await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
                 StatusText.Text = await repository.TestConnectionAsync();
             }
             catch (Exception exception)
@@ -1134,7 +1143,7 @@ public partial class MainWindow : Window
         ShowBusy("Fetching layer list from PostgreSQL...");
         try
         {
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
             layers = await repository.FindImportedLayersAsync();
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UndefinedTable)
@@ -1182,6 +1191,7 @@ public partial class MainWindow : Window
 
     private async Task LoadImportedPolygonsAsync()
     {
+        ClearDiffOverlay();
         ShowBusy("Fetching imported geometries from PostgreSQL...");
         try
         {
@@ -1191,7 +1201,7 @@ public partial class MainWindow : Window
                 await sync.ResetBaselineAsync();
             }
 
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
             var layerFilter = activeLayerFilter is { Count: > 0 } ? activeLayerFilter : null;
             var layerFeatures = await repository.FindImportedOuterPolygonsAsync(layerFilter);
             var instanceFeatures = await repository.FindImportedBlockInstanceGeometriesAsync(layerFilter);
@@ -1219,6 +1229,7 @@ public partial class MainWindow : Window
             RenderImportedGeometries(features);
             PopulateLayerPanel(layers);
             StatusText.Text = $"Loaded {features.Length} imported DXF object polygon(s) from {connectionSettings.Database}.";
+            _ = RefreshLayoutStatusAsync();
         }
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UndefinedTable)
         {
@@ -2231,7 +2242,7 @@ public partial class MainWindow : Window
         try
         {
             connectionSettings = ReadConnectionSettingsFromUi();
-            await using (var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString))
+            await using (var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId))
             {
                 if (await repository.LayerExistsAsync(newName))
                 {
@@ -2365,6 +2376,92 @@ public partial class MainWindow : Window
     }
 
     private void ExitApp_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void CopyScreenKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        var command = shortcutCommands.FirstOrDefault(c => c.Id == "tools.copyScreen");
+        if (command is null || e.Handled || !KeyGesture2.TryParse(command.Gesture, out var gesture))
+        {
+            return;
+        }
+
+        var key = e.Key switch { System.Windows.Input.Key.ImeProcessed => e.ImeProcessedKey, System.Windows.Input.Key.System => e.SystemKey, _ => e.Key };
+        if (key != gesture.Key || (System.Windows.Input.Keyboard.Modifiers & ~System.Windows.Input.ModifierKeys.Shift) != (gesture.Modifiers & ~System.Windows.Input.ModifierKeys.Shift))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        if (!e.IsRepeat)
+        {
+            CopyScreen_Click(this, new RoutedEventArgs());
+        }
+    }
+
+    /// <summary>Copies an image of the whole program window (title bar included) to the clipboard.</summary>
+    private void CopyScreenWpf()
+    {
+        try
+        {
+            var root = (FrameworkElement)Content;
+            var dpi = VisualTreeHelper.GetDpi(this);
+            var width = (int)Math.Ceiling(root.ActualWidth * dpi.DpiScaleX);
+            var height = (int)Math.Ceiling(root.ActualHeight * dpi.DpiScaleY);
+            if (width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+                dc.DrawRectangle(new VisualBrush(root) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
+                    null, new Rect(0, 0, root.ActualWidth, root.ActualHeight));
+
+                // Open dialogs and tool windows are drawn on top at their on-screen position.
+                var origin = root.PointToScreen(new System.Windows.Point(0, 0));
+                foreach (var window in Application.Current.Windows.OfType<Window>().Where(w => w != this && w.IsVisible && w.Content is FrameworkElement))
+                {
+                    var content = (FrameworkElement)window.Content;
+                    var at = content.PointToScreen(new System.Windows.Point(0, 0));
+                    var rect = new Rect((at.X - origin.X) / dpi.DpiScaleX, (at.Y - origin.Y) / dpi.DpiScaleY, content.ActualWidth, content.ActualHeight);
+                    dc.DrawRectangle(Brushes.White, null, rect);
+                    dc.DrawRectangle(new VisualBrush(content) { Stretch = Stretch.None, AlignmentX = AlignmentX.Left, AlignmentY = AlignmentY.Top },
+                        null, rect);
+                }
+            }
+
+            var bitmap = new System.Windows.Media.Imaging.RenderTargetBitmap(width, height, 96 * dpi.DpiScaleX, 96 * dpi.DpiScaleY, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            Clipboard.SetImage(bitmap);
+            StatusText.Text = "Screen copied to the clipboard (" + width + " x " + height + " px).";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Cannot copy the screen: " + ex.Message, "Copy screen", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>Opens the bundled user manual (PDF) in the default PDF viewer.</summary>
+    private void UserManual_Click(object sender, RoutedEventArgs e)
+    {
+        var path = System.IO.Path.Combine(AppContext.BaseDirectory, "Manual", "UserManual.pdf");
+        if (!System.IO.File.Exists(path))
+        {
+            MessageBox.Show(this, "The user manual file was not found:\n" + path, "User manual", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, "Cannot open the user manual: " + ex.Message, "User manual", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     private void About_Click(object sender, RoutedEventArgs e)
     {
@@ -2691,7 +2788,7 @@ public partial class MainWindow : Window
         {
             connectionSettings = ReadConnectionSettingsFromUi();
             ShowBusy("Loading editable objects...");
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
             // Ensures spatial_block_instances.updated_at (added for block-instance editing) exists
             // even if the database was never re-imported/re-deleted since that column was added —
             // otherwise FindEditableBlockInstancesAsync below fails and edit mode silently no-ops.
@@ -2749,6 +2846,7 @@ public partial class MainWindow : Window
 
             pendingEdits.Clear();
             ClearUndoHistory();
+            ClearDiffOverlay();
             ApplyEditMask(editableSourcesById.Values.Select(source => source.LayerName ?? "(no layer)").Distinct(StringComparer.OrdinalIgnoreCase));
 
             // A selection highlight left over from view mode is drawn on the base map at the saved
@@ -4246,8 +4344,8 @@ public partial class MainWindow : Window
     private async void SaveEdits_Click(object sender, RoutedEventArgs e) => await SaveEditsAsync(auto: false);
 
     /// <summary>
-    /// Saves the pending edits. <paramref name="auto"/> (auto-save timer) works silently: it skips instead of
-    /// showing dialogs, and afterwards re-enters edit mode on the same layer so the user can keep editing.
+    /// Saves the pending edits and re-enters edit mode on the same layer with the view unchanged, so the user can keep
+    /// editing. <paramref name="auto"/> (auto-save timer) works silently: it skips instead of showing dialogs.
     /// </summary>
     private async Task SaveEditsAsync(bool auto)
     {
@@ -4308,7 +4406,7 @@ public partial class MainWindow : Window
         try
         {
             connectionSettings = ReadConnectionSettingsFromUi();
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
             var conflictIds = await repository.ApplyLayerEditsAsync(updates, inserts, deletes, changeContext: CurrentChangeContext);
             var appliedUpdates = updates.Count - conflictIds.Count(id => updates.Any(u => u.Id == id));
             var appliedDeletes = deletes.Count - conflictIds.Count(id => deletes.Any(d => d.Id == id));
@@ -4321,18 +4419,14 @@ public partial class MainWindow : Window
             var editLayer = activeEditLayerName;
             ExitEditMode();
             StatusText.Text = summary;
+            await CreateAutoVersionAsync();
             await AuditAsync(auto ? "drawing.autosave" : "drawing.save", "drawing", null,
                 $"{appliedUpdates} updated, {inserts.Count} added, {appliedDeletes} deleted, {conflictIds.Count} conflict(s)");
-            if (auto)
-            {
-                await ReloadForSyncAsync();
-                await EnterEditModeForLayerAsync(editLayer);
-                StatusText.Text = $"Auto-saved at {DateTime.Now:HH:mm:ss}. {summary}";
-            }
-            else
-            {
-                await LoadImportedPolygonsAsync();
-            }
+            // Keep the working screen (view, edit mode, edited layer) and show the data as saved.
+            await ReloadForSyncAsync();
+            await EnterEditModeForLayerAsync(editLayer);
+
+            StatusText.Text = auto ? $"Auto-saved at {DateTime.Now:HH:mm:ss}. {summary}" : summary;
         }
         catch (PostgresException exception)
         {
@@ -4355,6 +4449,13 @@ public partial class MainWindow : Window
     /// </summary>
     private void Window_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (e.Key == System.Windows.Input.Key.Escape && !isEditMode && HasDiffOverlay)
+        {
+            ClearDiffOverlay();
+            e.Handled = true;
+            return;
+        }
+
         if (isEditMode && TryNudgeFromKey(e))
         {
             return;
@@ -4499,7 +4600,7 @@ public partial class MainWindow : Window
             var allLayerRows = blocks.Concat(equipmentBoundingBoxes).ToArray();
             parseStopwatch.Stop();
 
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
             StatusText.Text = "Preparing PostGIS schema...";
             BusyText.Text = "Preparing PostGIS schema...";
             await repository.EnsureSchemaAsync(cancellationToken);
@@ -4604,7 +4705,7 @@ public partial class MainWindow : Window
                 throw new InvalidOperationException("PostgreSQL password is empty.");
             }
 
-            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+            await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
             await repository.EnsureSchemaAsync();
             if (!await repository.HasImportedFileAsync(filePath))
             {

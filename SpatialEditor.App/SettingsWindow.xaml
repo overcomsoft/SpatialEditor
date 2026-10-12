@@ -65,6 +65,7 @@
             <ScrollViewer x:Name="GeneralPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
             <StackPanel>
                 <TextBlock Text="General" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+                <CheckBox x:Name="AutoVersionCheck" Content="Keep an automatic version of the drawing after every edit save" Margin="0,0,0,10" />
                 <CheckBox x:Name="AutoSaveCheck" Content="Auto-save edits" Margin="0,0,0,6" Checked="AutoSave_Changed" Unchecked="AutoSave_Changed" />
                 <StackPanel x:Name="AutoSavePanel" Orientation="Horizontal" Margin="22,0,0,6">
                     <TextBlock Text="Every" VerticalAlignment="Center" Margin="0,0,6,0" />

@@ -92,7 +92,7 @@ public partial class MainWindow
             ShowBusy($"Deleting layer {layerName}...");
             connectionSettings = ReadConnectionSettingsFromUi();
             int removed;
-            await using (var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString))
+            await using (var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId))
             {
                 removed = await repository.DeleteLayerAsync(layerName, changeContext: CurrentChangeContext);
             }
@@ -160,7 +160,7 @@ public partial class MainWindow
     private async Task<List<CadExportInstance>> LoadStoredInstancesAsync()
     {
         connectionSettings = ReadConnectionSettingsFromUi();
-        await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString);
+        await using var repository = new PostGisFeatureRepository(connectionSettings.ConnectionString, activeLayoutId);
         var stored = await repository.FindEditableBlockInstancesAsync();
         return stored
             .Where(source => !hiddenLayers.Contains(source.LayerName ?? "(no layer)"))

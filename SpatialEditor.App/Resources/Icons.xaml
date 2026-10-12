@@ -179,6 +179,67 @@
         </DrawingImage.Drawing>
     </DrawingImage>
 
+    <!-- Copy screen: a window frame with a camera lens -->
+    <DrawingImage x:Key="Icon.CopyScreen">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#ECEFF1" Pen="{StaticResource Pen.Dark}" Geometry="M3,5 H21 V19 H3 Z" />
+                <GeometryDrawing Brush="#90A4AE" Geometry="M3,5 H21 V8 H3 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M12,10.5 A3.2,3.2 0 1 0 12.01,10.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Save version: a sheet with a flag -->
+    <DrawingImage x:Key="Icon.Version">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M4,3 H15 L20,8 V21 H4 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Blue}" Geometry="M15,3 V8 H20" />
+                <GeometryDrawing Pen="{StaticResource Pen.GreenBold}" Geometry="M8,12 V19" />
+                <GeometryDrawing Brush="#66BB6A" Pen="{StaticResource Pen.Green}" Geometry="M8,12.5 L14.5,14.5 L8,16.5 Z" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Version history: clock with a back arrow -->
+    <DrawingImage x:Key="Icon.History">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Teal}" Geometry="M12,5 A8,8 0 1 1 5,9" />
+                <GeometryDrawing Brush="#00796B" Geometry="M1.5,6 L7.5,5 L5,11 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Dark}" Geometry="M12,8.5 V12.5 L15,14.5" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Compare: two overlapping sheets with a difference mark -->
+    <DrawingImage x:Key="Icon.Compare">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M3,5 H13 V16 H3 Z" />
+                <GeometryDrawing Brush="#FFF3E0" Pen="{StaticResource Pen.Orange}" Geometry="M10,9 H21 V20 H10 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.RedBold}" Geometry="M13.5,13 H17.5 M15.5,11 V15" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
+    <!-- Drawings: stacked sheets -->
+    <DrawingImage x:Key="Icon.Layout">
+        <DrawingImage.Drawing>
+            <DrawingGroup>
+                <GeometryDrawing Brush="Transparent" Geometry="M0,0 L24,0 24,24 0,24 Z" />
+                <GeometryDrawing Brush="#ECEFF1" Pen="{StaticResource Pen.Gray}" Geometry="M5,3 H17 V15 H5 Z" />
+                <GeometryDrawing Brush="#E3F2FD" Pen="{StaticResource Pen.Blue}" Geometry="M8,7 H20 V19 H8 Z" />
+                <GeometryDrawing Pen="{StaticResource Pen.Thin}" Geometry="M11,11 H17 M11,14 H15" />
+            </DrawingGroup>
+        </DrawingImage.Drawing>
+    </DrawingImage>
+
     <!-- Cancel import: red disc with a cross -->
     <DrawingImage x:Key="Icon.Cancel">
         <DrawingImage.Drawing>

@@ -18,6 +18,7 @@ internal sealed class SyncCoordinator : IAsyncDisposable
     private readonly ChangeListener listener;
     private readonly Guid sessionId;
     private readonly Func<IReadOnlyCollection<string>?> loadedLayers;
+    private readonly Func<long> layoutId;
     private readonly DispatcherTimer debounceTimer;
     private bool disposed;
 
@@ -38,8 +39,9 @@ internal sealed class SyncCoordinator : IAsyncDisposable
     /// <summary>Raised on the UI thread when the notification connection goes up or down.</summary>
     public event Action<bool>? ConnectionChanged;
 
-    public SyncCoordinator(string connectionString, Guid sessionId, Func<IReadOnlyCollection<string>?> loadedLayers)
+    public SyncCoordinator(string connectionString, Guid sessionId, Func<IReadOnlyCollection<string>?> loadedLayers, Func<long> layoutId)
     {
+        this.layoutId = layoutId;
         this.sessionId = sessionId;
         this.loadedLayers = loadedLayers;
         feed = new ChangeFeedRepository(connectionString);
@@ -84,7 +86,7 @@ internal sealed class SyncCoordinator : IAsyncDisposable
     /// <summary>Looks for changes by other sessions on the loaded layers since the baseline.</summary>
     public async Task<ChangeBatch> CheckAsync()
     {
-        var batch = await feed.GetChangesSinceAsync(Baseline, sessionId, loadedLayers());
+        var batch = await feed.GetChangesSinceAsync(Baseline, sessionId, loadedLayers(), default, layoutId());
         if (batch.HasChanges)
         {
             Pending = batch;

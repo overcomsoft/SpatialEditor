@@ -47,6 +47,9 @@ public partial class MainWindow
         Add("edit.undo", "Edit", "Undo", "Ctrl+Z", UndoEdit, () => isEditMode && undoStack.Count > 0, "_Undo");
         Add("edit.redo", "Edit", "Redo", "Ctrl+R", RedoEdit, () => isEditMode && redoStack.Count > 0, "_Redo");
         Add("edit.selectAll", "Edit", "Select all objects", "Ctrl+A", SelectAllObjects, () => isEditMode, "Select _all");
+        Add("version.save", "Version", "Save version...", "Ctrl+Shift+S", () => Click(SaveVersion_Click), () => VersionSaveButton.IsEnabled, "_Save version…");
+        Add("version.manager", "Version", "Version manager...", "", () => Click(VersionManager_Click), () => VersionManagerButton.IsEnabled, "Version _manager…");
+        Add("version.layouts", "Version", "Drawings...", "", () => Click(LayoutManager_Click), () => LayoutButton.IsEnabled, "_Drawings…");
         Add("edit.duplicate", "Edit", "Duplicate", "Ctrl+D", () => Click(DuplicateSelected_Click), () => isEditMode && DuplicateButton.IsEnabled, "D_uplicate");
         Add("edit.delete", "Edit", "Delete object", "Delete", () => Click(DeleteSelected_Click), () => isEditMode && DeleteObjectButton.IsEnabled, "De_lete object");
         Add("edit.group", "Edit", "Group into block", "Ctrl+G", () => Click(GroupSelected_Click), () => isEditMode && GroupButton.IsEnabled, "_Group into block");
@@ -76,10 +79,12 @@ public partial class MainWindow
         Add("tools.addPoint", "Tools", "Add point", "", () => Click(AddPoint_Click), null, "Add _point");
         Add("tools.library", "Tools", "Block library...", "", () => Click(OpenLibrary_Click), () => LibraryMenuItem.IsEnabled, "Block _library...");
         Add("tools.registerLibrary", "Tools", "Register selected block in library...", "", () => Click(RegisterInLibrary_Click), () => RegisterLibraryMenuItem.IsEnabled, "_Register selected block in library...");
+        Add("tools.copyScreen", "Tools", "Copy screen to clipboard", "Ctrl+P", () => Click(CopyScreen_Click), null, "_Copy screen to clipboard");
         Add("tools.settings", "Tools", "Settings...", "Ctrl+OemComma", () => Click(OpenSettings_Click), null, "_Settings...");
         Add("admin.users", "Admin", "User management...", "", () => Click(ManageUsers_Click), () => UsersMenuItem.IsEnabled, "_User management...");
         Add("admin.password", "Admin", "Change my password...", "", () => Click(ChangePassword_Click), () => PasswordMenuItem.IsEnabled, "Change my _password...");
         Add("admin.logout", "Admin", "Log in / Log out", "", () => Click(Logout_Click), () => LogoutMenuItem.IsEnabled, "_Log in|_Log out");
+        Add("help.manual", "Help", "User manual (PDF)", "F1", () => Click(UserManual_Click), null, "User _manual (PDF)");
         Add("help.about", "Help", "About OmniDT SE", "", () => Click(About_Click), null, "_About OmniDT SE");
     }
 

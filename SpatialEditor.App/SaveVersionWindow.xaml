@@ -1,0 +1,17 @@
+<Window x:Class="SpatialEditor.App.SaveVersionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Save version" Width="440" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False" Background="#F4F6F8">
+    <StackPanel Margin="16">
+        <TextBlock x:Name="HeaderText" FontWeight="SemiBold" Margin="0,0,0,10" />
+        <TextBlock Text="Version name" Margin="0,0,0,3" />
+        <TextBox x:Name="LabelBox" MaxLength="255" Padding="3" Margin="0,0,0,10" />
+        <TextBlock Text="Comment (optional)" Margin="0,0,0,3" />
+        <TextBox x:Name="CommentBox" AcceptsReturn="True" TextWrapping="Wrap" Height="80" Padding="3" VerticalScrollBarVisibility="Auto" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button x:Name="OkButton" Content="Save version" Padding="18,5" Margin="0,0,8,0" IsDefault="True" Click="Ok_Click" />
+            <Button Content="Cancel" Padding="18,5" IsCancel="True" />
+        </StackPanel>
+    </StackPanel>
+</Window>

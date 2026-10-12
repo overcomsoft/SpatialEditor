@@ -235,6 +235,7 @@ sequenceDiagram
 | 겹침 금지 | `RejectEquipmentOverlap`/`HasEquipmentOverlapBeforeSave`: 장비 외곽(`EquipmentAreas`)이 겹치면 오류를 알리고 이전 위치로 되돌린다. 저장 직전에도 검사 |
 | ESC | `CancelEdits`: 진행 중 드래그 취소, 없으면 저장되지 않은 모든 편집을 버리고 저장 상태로 복원(버린 상태도 Undo로 되살릴 수 있다). Edit 메뉴 "Cancel edits"도 같은 동작 |
 | 자동 저장 | 설정의 주기(1~120분)마다 `AutoSaveTickAsync` → `SaveEditsAsync(auto: true)`. 겹침이 있으면 건너뜀. 저장 후 다시 불러와 같은 레이어 편집 모드로 복귀 |
+| 저장 후 화면 유지 | 수동·자동 저장 모두 `SaveEditsAsync`가 `ExitEditMode` → 자동 버전·감사 기록 → `ReloadForSyncAsync`(화면 중심·배율·숨김 레이어 보존하며 재로딩) → `EnterEditModeForLayerAsync(editLayer)`로 같은 편집 상태에 복귀한다. 이전에는 수동 저장만 `LoadImportedPolygonsAsync`로 전체를 다시 그려 화면과 편집 모드가 초기화됐다. 선택과 Undo/Redo 이력은 재로딩 때문에 비워진다 |
 
 **저장**(`SaveEditsAsync` → `PostGisFeatureRepository.ApplyLayerEditsAsync`):
 
@@ -330,6 +331,33 @@ sequenceDiagram
 
 ---
 
+### 3.12 도면·버전 관리
+
+설계 배경과 결정은 `VERSION_PLAN.md`, 테이블은 `DATABASE_SCHEMA.md` 6절.
+
+- **도면(Layout)**: 작업본 테이블 두 개의 `layout_id`로 구분한다. `PostGisFeatureRepository`는 생성자에서 `layoutId`를 받아 모든 질의에 적용한다(SQL 안의 `@@L@@` 자리표시자를 `Q()`가 치환, 삽입은 `layout_id` 컬럼을 채움). 앱은 `activeLayoutId`를 들고 `new PostGisFeatureRepository(cs, activeLayoutId)`로 만든다. `SyncCoordinator`와 `change_log`도 도면별이다.
+- **객체 식별**: `object_uid`(불변 UUID). 복제·그룹은 새 uid, 이동·회전·복원은 uid 유지. 비교는 이 uid로 맞춘다(`VersionDiffer`).
+- **`VersionRepository`**: `CreateVersionAsync`(스냅샷, 내용 해시로 변경 없음 감지, `pg_advisory_xact_lock`으로 번호 직렬화), `DiffAsync`(버전↔버전/작업본), `RestoreVersionAsync`(복원 전 자동 버전 → 작업본 교체 → 블록 정의 동기화 → 변경 피드), `CreateLayoutFromVersionAsync`(분기), `SetStatusAsync`/`DeleteVersionAsync`/`UpdateVersionAsync`, 도면 관리(`ListLayoutsAsync`, `CreateLayoutAsync`, `RenameLayoutAsync`, `DeleteLayoutAsync`), `GetStatusAsync`(작업본 수정 여부).
+- **자동 버전**: `SaveEditsAsync` 성공 후 `CreateAutoVersionAsync`(`AppSettings.AutoVersionOnSave`).
+- **화면**: `MainWindow.Versions.cs`(도면 상태, 버전 저장, 관리자 열기, 도면 전환 `SwitchLayoutAsync`, 비교 오버레이 `ShowDiffOverlay`), `VersionManagerWindow`, `LayoutManagerWindow`, `SaveVersionWindow`. 로그인 직후 `EnsureDrawingSchemasAsync`가 스키마를 이관한다.
+- **권한**: 새 키 없음. 조회·비교 `drawing.view`, 내보내기 `drawing.export`, 저장·복원·분기·확정·삭제 `drawing.edit`.
+- **테스트**: `VersionDifferTests`(DB 불필요), `VersionRepositoryTests`(환경 변수 `SPATIAL_TEST_CONNECTION`이 가리키는 **빈 테스트 DB**에서만 실행되며 테이블을 지우고 다시 만든다 — 운영 DB를 지정하지 말 것).
+
+---
+
+### 3.13 화면 캡처·도움말·실행 파일명
+
+- **화면 캡처**(`MainWindow.Capture.cs`, 명령 `tools.copyScreen`, 기본 Ctrl+P, 툴바 `캡처`, Tools 메뉴): 메인 창과 열린 다이얼로그를 이미지로 클립보드에 복사한다.
+  - 키 처리: `MainWindow` 생성자에서 `EventManager.RegisterClassHandler(typeof(Window), PreviewKeyDown, CopyScreenKeyDown)`로 **모든 창**에서 받는다(다이얼로그는 별도 창이라 메인 창 핸들러가 받지 못했다). 설정된 제스처의 키와 Ctrl 등 수정키만 비교하고 **Shift는 무시**한다(대문자·Caps Lock 허용).
+  - 캡처 범위: `EnumThreadWindows`로 UI 스레드의 보이는 최상위 창 전부(메인·다이얼로그·메시지 상자·열린 메뉴)를 모아, `DwmGetWindowAttribute(EXTENDED_FRAME_BOUNDS)`의 합집합을 구한다.
+  - 캡처 순서: ① `Graphics.CopyFromScreen`으로 화면 픽셀 복사 → ② 결과가 30% 이상 검으면(`IsMostlyBlack`) 창마다 `PrintWindow(PW_RENDERFULLCONTENT)`로 그려 합성(보이는 프레임만 붙여 투명 리사이즈 테두리가 아래 창을 덮지 않게 함) → ③ 그래도 검으면 `CopyScreenWpf`(WPF `VisualBrush` 렌더링, 다이얼로그 내용만 위치에 맞춰 합성, 제목 표시줄 없음). 일부 원격·가상 화면·드라이버에서 `PrintWindow`가 검은 이미지를 돌려주는 문제 때문이다.
+  - 의존: `System.Drawing.Common` 8.0.10(앱 프로젝트 `PackageReference`).
+- **도움말**: Help → User manual (PDF) / F1(`help.manual`) → `Manual\UserManual.pdf`를 기본 PDF 뷰어로 연다(`UserManual_Click`). PDF는 `docs\USER_MANUAL.pdf`를 csproj `Content`(링크 `Manual\UserManual.pdf`, `CopyToOutputDirectory`)로 출력 폴더에 복사한다.
+- **매뉴얼 산출물**: `docs\USER_MANUAL.html`(원본) → `tools\build-manual-pdf.ps1`(Edge/Chrome headless 인쇄, A4)로 `USER_MANUAL.pdf` 생성. Word 판(`USER_MANUAL.docx`)은 HTML의 SVG 그림을 PNG로 바꿔 Word로 변환한 것이다. HTML 생성 스크립트는 아직 저장소에 없다(세션 작업 폴더) — 매뉴얼을 고치려면 `tools\`로 옮겨야 한다.
+- **실행 파일 이름**: `OmniDT-SE.exe`(`AssemblyName`=`OmniDT-SE`, `RootNamespace`=`SpatialEditor.App` 유지).
+
+**직접 확인하지 못한 것**: 다이얼로그가 떠 있는 상태에서 Ctrl+P로 메인과 다이얼로그가 함께 캡처되는지(마지막 방식 변경 후), 이미지가 검게 나오는 환경에서의 2·3단계 대체 경로, 저장 후 화면 유지(실제 DB 저장), F1·메뉴로 PDF 열기, 한글 IME·Caps Lock 상태의 Ctrl+P.
+
 ## 4. 데이터베이스 요약
 
 전체 정의는 `DATABASE_SCHEMA.md`. 스키마는 앱 시작·기능 첫 사용 시 `EnsureSchemaAsync`가 **멱등 SQL**(`CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS`)로 보장하므로 별도 마이그레이션이 없다.
@@ -340,6 +368,7 @@ sequenceDiagram
 | 라이브러리 | `block_categories`, `block_library`, `block_library_versions`, `block_ports` | `LibraryRepository` |
 | 사용자 | `app_users`, `roles`, `role_permissions`, `user_roles`, `audit_log` | `UserRepository` |
 | 동기화 | `change_log` | `ChangeFeedRepository` |
+| 도면·버전 | `layouts`, `layout_versions`, `layout_version_blocks`, `layout_version_features` | `PostGisFeatureRepository`, `VersionRepository` |
 
 주요 리포지토리 메서드(`PostGisFeatureRepository`):
 
@@ -384,6 +413,7 @@ sequenceDiagram
 
 ## 7. 개발 환경 메모
 
-- 빌드: `dotnet build SpatialEditor.sln` (WPF는 Windows 필요). 출력: `SpatialEditor.App\bin\Debug\net8.0-windows`.
+- 빌드: `dotnet build SpatialEditor.sln` (WPF는 Windows 필요). 출력: `SpatialEditor.App\bin\Debug\net8.0-windows`(실행 파일 `OmniDT-SE.exe`, 매뉴얼 `Manual\UserManual.pdf`).
+- 매뉴얼 PDF 갱신: `powershell -ExecutionPolicy Bypass -File tools\build-manual-pdf.ps1` 후 다시 빌드.
 - DB 연결은 앱의 서버 연결 창에서 설정한다. 개발용 DB 이름 기본값은 `dinno`.
 - 새 UI 기능을 넣을 때의 체크리스트: ① 권한 키 확인(`Require`) ② `ApplyUserState`에서 활성 조건 ③ 메뉴·툴바·`BuildShortcutCommands` 등록 ④ 변경이 DB를 바꾸면 `ChangeFeedRepository.RecordAsync`와 `AuditAsync` 기록 ⑤ 편집 모드·동기화와의 상호작용(`CanReloadLayers`) 확인.

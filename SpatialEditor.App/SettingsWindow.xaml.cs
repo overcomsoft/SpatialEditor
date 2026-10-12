@@ -57,6 +57,7 @@ public partial class SettingsWindow : Window
 
         ShortcutList.ItemsSource = rows;
         AutoSaveCheck.IsChecked = Settings.AutoSaveEnabled;
+        AutoVersionCheck.IsChecked = Settings.AutoVersionOnSave;
         AutoSaveMinutesBox.Text = Settings.AutoSaveMinutes.ToString();
         UpdateAutoSavePanel();
 
@@ -241,6 +242,7 @@ public partial class SettingsWindow : Window
         Settings.RememberPassword = RememberPasswordCheck.IsChecked == true;
         Settings.AutoLogin = Settings.RememberPassword && AutoLoginCheck.IsChecked == true;
         Settings.AutoSaveEnabled = AutoSaveCheck.IsChecked == true;
+        Settings.AutoVersionOnSave = AutoVersionCheck.IsChecked == true;
         Settings.AutoSaveMinutes = minutes;
         Settings.SelectionColor = ColorEditor.ToHex(SelectionColorEditor.Color);
         Settings.SelectionThickness = SelectionThicknessSlider.Value;

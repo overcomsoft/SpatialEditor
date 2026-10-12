@@ -38,6 +38,7 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
                 entity_id BIGINT,
                 op CHAR(1) NOT NULL
             );
+            ALTER TABLE change_log ADD COLUMN IF NOT EXISTS layout_id BIGINT NOT NULL DEFAULT 1;
             CREATE INDEX IF NOT EXISTS idx_change_log_layer_seq ON change_log (layer_name, seq);
             CREATE INDEX IF NOT EXISTS idx_change_log_changed_at ON change_log (changed_at);
             """;
@@ -51,7 +52,7 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
     /// </summary>
     internal static async Task<long?> RecordAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, ChangeContext? context,
-        IReadOnlyCollection<ChangeEntry> entries, CancellationToken cancellationToken)
+        IReadOnlyCollection<ChangeEntry> entries, CancellationToken cancellationToken, long layoutId = 1)
     {
         if (entries.Count == 0)
         {
@@ -60,8 +61,8 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
 
         const string sql = """
             WITH ins AS (
-                INSERT INTO change_log (user_id, user_name, session_id, layer_name, entity_type, entity_id, op)
-                SELECT $1, $2, $3, l, t, i, o::char(1)
+                INSERT INTO change_log (user_id, user_name, session_id, layer_name, entity_type, entity_id, op, layout_id)
+                SELECT $1, $2, $3, l, t, i, o::char(1), $8
                 FROM unnest($4::text[], $5::text[], $6::bigint[], $7::text[]) AS e(l, t, i, o)
                 RETURNING seq
             )
@@ -75,6 +76,7 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
         command.Parameters.Add(new NpgsqlParameter { Value = entries.Select(e => e.EntityType).ToArray(), NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Text });
         command.Parameters.Add(new NpgsqlParameter { Value = entries.Select(e => e.EntityId).ToArray(), NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Bigint });
         command.Parameters.Add(new NpgsqlParameter { Value = entries.Select(e => e.Operation.ToString()).ToArray(), NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Text });
+        command.Parameters.Add(new NpgsqlParameter { Value = layoutId, NpgsqlDbType = NpgsqlDbType.Bigint });
         var seq = (long)(await command.ExecuteScalarAsync(cancellationToken))!;
 
         await using var notify = new NpgsqlCommand("SELECT pg_notify($1, $2);", connection, transaction);
@@ -103,7 +105,7 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
     /// caller's baseline moves past everything it has looked at.
     /// </summary>
     public async Task<ChangeBatch> GetChangesSinceAsync(
-        long afterSeq, Guid ownSession, IReadOnlyCollection<string>? layers, CancellationToken cancellationToken = default)
+        long afterSeq, Guid ownSession, IReadOnlyCollection<string>? layers, CancellationToken cancellationToken = default, long layoutId = 1)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
 
@@ -128,6 +130,7 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
             FROM change_log
             WHERE seq > $1 AND seq <= $2
               AND (session_id IS NULL OR session_id <> $3)
+              AND layout_id = $5
               AND ($4::text[] IS NULL OR lower(layer_name) = ANY($4::text[]))
             GROUP BY layer_name, user_name
             ORDER BY layer_name, user_name;
@@ -141,6 +144,7 @@ public sealed class ChangeFeedRepository : IAsyncDisposable
             Value = layers is null ? DBNull.Value : layers.Select(layer => layer.ToLowerInvariant()).ToArray(),
             NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Text
         });
+        command.Parameters.Add(new NpgsqlParameter { Value = layoutId, NpgsqlDbType = NpgsqlDbType.Bigint });
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var summaries = new List<ChangeSummary>();
         while (await reader.ReadAsync(cancellationToken))

@@ -1,0 +1,28 @@
+<Window x:Class="SpatialEditor.App.LayoutManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Drawings" Width="640" Height="420" MinWidth="520" MinHeight="300"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False" Background="#F4F6F8">
+    <DockPanel Margin="12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button x:Name="OpenButton" Content="Open" Padding="18,5" Margin="0,0,16,0" IsDefault="True" Click="Open_Click" />
+            <Button Content="New empty drawing…" Padding="12,5" Margin="0,0,6,0" Click="New_Click" />
+            <Button x:Name="RenameButton" Content="Rename…" Padding="12,5" Margin="0,0,6,0" Click="Rename_Click" />
+            <Button x:Name="DeleteButton" Content="Delete…" Padding="12,5" Margin="0,0,16,0" Click="Delete_Click" />
+            <Button Content="Close" Padding="18,5" IsCancel="True" />
+        </StackPanel>
+        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#52606D" Margin="0,0,0,8"
+                   Text="Each drawing has its own working copy and its own versions, so alternatives (A/B) can be edited side by side. Create an alternative from a version in the Version Manager (Branch to new drawing)." />
+        <ListView x:Name="LayoutList" SelectionMode="Single" MouseDoubleClick="LayoutList_DoubleClick" SelectionChanged="LayoutList_SelectionChanged">
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="" Width="26" DisplayMemberBinding="{Binding Marker}" />
+                    <GridViewColumn Header="Name" Width="230" DisplayMemberBinding="{Binding Name}" />
+                    <GridViewColumn Header="Objects" Width="70" DisplayMemberBinding="{Binding ObjectCount}" />
+                    <GridViewColumn Header="Started from" Width="130" DisplayMemberBinding="{Binding Origin}" />
+                    <GridViewColumn Header="Created" Width="130" DisplayMemberBinding="{Binding Created}" />
+                </GridView>
+            </ListView.View>
+        </ListView>
+    </DockPanel>
+</Window>

@@ -387,3 +387,47 @@ DXF `INSERT` 1개 = 1행. 한 행이 블록 전체(구성 선분 전부)를 하�
 - **정의 원본은 코드**다. 이 문서는 2026-10-08 기준 코드와 임시 DB 실행 결과를 바탕으로 썼고, 실제 `SD_DB`에서 `\d`로 대조하지는 않았다. 스키마를 바꾸면 이 문서도 함께 고쳐야 한다.
 - `database/001_initial_schema.sql`은 초기 참고용이며 위 전체 구조를 담고 있지 않다. 실제 구조의 기준은 `EnsureSchema`다.
 - 모든 사용자가 같은 PostgreSQL 계정으로 접속하고 권한은 앱에서 검사한다(`LIBRARY_DESIGN.md` 7.4).
+
+## 6. 버전 관리 테이블 (2026-10-11)
+
+앱이 로그인 직후 `EnsureSchema`로 만든다(정의 위치: `PostGisFeatureRepository`, `VersionRepository`, `ChangeFeedRepository`). 기존 데이터베이스는 같은 단계에서 제자리 이관된다.
+
+### 추가·변경된 컬럼
+
+| 테이블 | 컬럼 | 설명 |
+|---|---|---|
+| `spatial_block_instances`, `spatial_features` | `layout_id BIGINT NOT NULL DEFAULT 1` | 소속 도면. 모든 조회·저장은 도면 안에서만 이루어진다 |
+| 〃 | `object_uid UUID NOT NULL DEFAULT gen_random_uuid()` | 버전을 가로질러 객체를 알아보는 불변 식별자. `(layout_id, object_uid)` 유일 |
+| `change_log` | `layout_id BIGINT NOT NULL DEFAULT 1` | 변경 알림을 도면별로 구분 |
+
+### `layouts` — 도면
+
+| 컬럼 | 설명 |
+|---|---|
+| `id` PK | id 1 = 기본 도면(자동 생성) |
+| `name`, `description`, `created_at`, `created_by_name` | |
+| `base_version_id` | 이 도면의 작업본이 출발한 버전(버전 저장·복원·분기 때 갱신). 상태 표시줄의 "v5 기반" |
+
+### `layout_versions` — 버전
+
+| 컬럼 | 설명 |
+|---|---|
+| `id` PK, `layout_id` FK(`ON DELETE CASCADE`) | |
+| `version_no` | 도면별 순번, `(layout_id, version_no)` 유일 |
+| `label`, `comment` | 이름·설명 |
+| `parent_version_id` FK(`ON DELETE SET NULL`) | 계보 |
+| `status` | `draft` / `released` / `baseline`(도면당 하나, 수정·삭제 불가) / `archived` |
+| `kind` | `manual` / `auto`(편집 저장 후) / `pre-restore`(복원 직전) |
+| `created_by`, `created_by_name`, `created_at` | |
+| `block_count`, `feature_count` | 항목 수 |
+| `content_hash` | 내용 해시(변경 없음 감지, 작업본 수정 여부 판정) |
+
+### `layout_version_blocks` — 버전 시점의 설비
+
+`(version_id, object_uid)` PK, `version_id` FK(`ON DELETE CASCADE`). `block_name`, `layer_name`, `source_file`, `insert_x/y`, `rotation_deg`, `scale_x/y`, `attributes`, `geom`, `outer_geom`.
+
+### `layout_version_features` — 버전 시점의 일반 객체
+
+`(version_id, object_uid)` PK. `feature_type`, `block_name`, `layer_name`, `source_file`, `attributes`, `geom`, `outer_geom`.
+
+버전 테이블은 작업본과 **독립된 스냅샷**이라 `DeleteLayerAsync`, `DeleteImportedFileAsync` 등 작업본 삭제의 영향을 받지 않는다. 도면을 삭제하면 그 도면의 작업본·변경 기록·버전이 함께 삭제된다.

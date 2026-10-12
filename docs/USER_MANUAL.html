@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OmniDT SE 사용자 매뉴얼</title>
+<style>
+:root{--bg:#fff;--fg:#1f2933;--muted:#6b7785;--line:#d9e0e7;--accent:#c62828;--soft:#f4f6f8;--code:#eef2f6}
+@media (prefers-color-scheme: dark){:root{--bg:#161b22;--fg:#e6edf3;--muted:#9aa7b4;--line:#2d3640;--accent:#ff7b8a;--soft:#1d242d;--code:#222b36}
+svg text{fill:#263238}.shotbox{background:#1d242d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font-family:"Malgun Gothic","Segoe UI",system-ui,sans-serif;line-height:1.7;font-size:16px}
+header.top{background:linear-gradient(180deg,#f67082,#de3a54);color:#fff;padding:44px 24px 36px}
+header.top h1{margin:0 auto;max-width:980px;font-size:34px}
+header.top p{margin:6px auto 0;max-width:980px;opacity:.92}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:250px 1fr;gap:32px;padding:20px 24px 80px}
+nav.toc{position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);overflow:auto;font-size:14px;border-right:1px solid var(--line);padding-right:14px}
+nav.toc b{display:block;margin:10px 0 2px;color:var(--accent)}
+nav.toc a{display:block;color:var(--fg);text-decoration:none;padding:2px 0}
+nav.toc a:hover{color:var(--accent)}
+main{min-width:0}
+h2{margin:44px 0 8px;font-size:26px;border-bottom:2px solid var(--accent);padding-bottom:6px}
+h3{margin:30px 0 6px;font-size:20px}
+h4{margin:20px 0 6px;font-size:16px}
+p,li{max-width:80ch}
+figure{margin:18px 0;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--soft);overflow-x:auto}
+figure svg{width:100%;height:auto;min-width:560px;background:#fff;border-radius:6px}
+figcaption{margin-top:8px;font-size:13.5px;color:var(--muted);text-align:center}
+table{border-collapse:collapse;width:100%;margin:10px 0 16px;font-size:14.5px}
+th,td{border:1px solid var(--line);padding:7px 10px;text-align:left;vertical-align:top}
+th{background:var(--soft)}
+kbd{font-family:Consolas,monospace;background:var(--code);border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:1px 6px;font-size:13px;white-space:nowrap}
+.muted{color:var(--muted)}
+.chip{display:inline-block;border:1.5px solid;border-radius:6px;padding:1px 9px;font-weight:700;font-size:14px;color:#263238}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:7px}
+.note,.warn,.tip{border-left:4px solid;border-radius:6px;padding:8px 14px;margin:14px 0;max-width:85ch}
+.note{border-color:#1565c0;background:rgba(21,101,192,.08)}
+.warn{border-color:#c62828;background:rgba(198,40,40,.08)}
+.tip{border-color:#2e7d32;background:rgba(46,125,50,.08)}
+.note>b,.warn>b,.tip>b{display:block}
+.strip{display:flex;flex-wrap:wrap;gap:6px 14px;padding:10px;background:var(--soft);border:1px solid var(--line);border-radius:8px}
+.sgroup{display:flex;gap:4px;padding-right:12px;border-right:1px solid var(--line)}
+.sgroup:last-child{border-right:0}
+.btnmock{display:inline-flex;flex-direction:column;align-items:center;gap:2px;border:1.2px solid;border-radius:5px;padding:4px 6px 2px;font-size:11px;color:#263238;min-width:38px}
+.btnmock i{width:18px;height:14px;border-radius:3px;display:block;opacity:.8}
+.shot{margin:14px 0}
+.shotbox{border:2px dashed var(--line);border-radius:10px;padding:34px 12px;text-align:center;color:var(--muted);background:var(--soft)}
+ol.steps{counter-reset:s;list-style:none;padding-left:0}
+ol.steps>li{counter-increment:s;position:relative;padding-left:38px;margin:8px 0}
+ol.steps>li:before{content:counter(s);position:absolute;left:0;top:1px;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;text-align:center;line-height:26px;font-weight:700;font-size:14px}
+footer{margin-top:60px;color:var(--muted);font-size:13px;border-top:1px solid var(--line);padding-top:12px}
+@media (max-width:860px){.layout{grid-template-columns:1fr;padding:12px 16px 60px}nav.toc{position:static;max-height:none;border-right:0;border-bottom:1px solid var(--line);padding-bottom:10px}}
+@page{size:A4;margin:14mm}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2{break-after:avoid}img,table,.note,.warn,.tip{break-inside:avoid}nav.toc{display:none}.layout{display:block}header.top{padding:16px}}
+</style>
+</head>
+<body>
+<header class="top"><h1>OmniDT SE 사용자 매뉴얼</h1><p>Spatial Editor — CAD 설비 도면 조회·편집 프로그램</p></header>
+<div class="layout">
+<nav class="toc" aria-label="목차">
+<b>1부. 시작하기</b>
+<a href="#s1">1. 프로그램 소개와 화면 구성</a>
+<a href="#s2">2. 서버 연결과 로그인</a>
+<a href="#s3">3. 데이터 불러오기</a>
+<b>2부. 2D 뷰 보기·조회</b>
+<a href="#s4">4. 보기 조작</a>
+<a href="#s5">5. 객체 선택과 속성 확인</a>
+<a href="#s6">6. 레이어 관리</a>
+<b>3부. 편집</b>
+<a href="#s7">7. 편집 모드·저장</a>
+<a href="#s8">8. 객체 선택 방법</a>
+<a href="#s9">9. 이동·회전·복제·삭제·그룹</a>
+<a href="#s10">10. 정점 편집</a>
+<a href="#s11">11. Undo / Redo / 편집 취소</a>
+<b>4부. 가져오기·내보내기</b>
+<a href="#s12">12. DXF 내보내기</a>
+<a href="#s13">13. 블록 라이브러리</a>
+<b>5부. 관리·설정</b>
+<a href="#s14">14. 사용자·역할 관리</a>
+<a href="#s15">15. 설정 창</a>
+<b>6부. 도면·버전</b>
+<a href="#s19">19. 도면과 버전 관리</a>
+<a href="#s20">20. 화면 캡처와 도움말</a>
+<b>7부. 부록</b>
+<a href="#s16">16. 툴바 버튼 전체 표</a>
+<a href="#s17">17. 단축키 일람</a>
+<a href="#s18">18. 문제 해결</a>
+</nav>
+<main>
+<h2 id="s1">1. 프로그램 소개와 화면 구성</h2>
+<p><b>OmniDT SE (Spatial Editor)</b>는 CAD(DXF) 도면의 <b>설비(장비) 블록</b>을 PostgreSQL/PostGIS 서버에 저장해 두고, 2D 화면에서 조회·편집하며 여러 사람이 같은 데이터를 함께 쓰는 프로그램입니다.</p>
+<ul><li><b>블록 객체</b>: DXF의 INSERT 하나가 편집 가능한 객체 하나입니다. 선이 여러 개여도 하나로 선택·이동·회전됩니다.</li><li><b>레이어</b>: 객체를 묶는 이름입니다(예: Equipment). 보이기/숨기기, 색상 설정, 편집 대상 선택의 단위입니다.</li><li><b>조회 모드 / 편집 모드</b>: 평소에는 조회 모드이고, 편집 모드에서만 객체를 바꿀 수 있습니다. 편집 내용은 저장해야 서버에 반영됩니다.</li></ul>
+<div class="tip"><b>이 매뉴얼 보기</b><span>프로그램 안에서 <kbd>F1</kbd> 또는 <b>Help → User manual (PDF)</b>를 누르면 이 매뉴얼의 PDF 판이 열립니다.</span></div>
+<figure id="fig1"><svg viewBox="0 0 860 470" role="img" aria-label="메인 화면 구성" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="0" y="0" width="860" height="470" fill="#fff" stroke="#90A4AE" stroke-width="2" rx="6"/>
+<rect x="1" y="1" width="858" height="26" fill="#F4F6F8" stroke="#D0D7DE"/>
+<text x="12" y="19" font-size="12" fill="#37474F">File   Edit   View   Layer   Tools   Admin   Help</text>
+<rect x="1" y="27" width="858" height="58" fill="#F9FAFB" stroke="#D0D7DE"/>
+<rect x="10" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="21.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="34" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="45.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="58" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="69.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="82" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="93.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="106" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="117.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="130" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="141.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="157" y1="34" x2="157" y2="78" stroke="#C9D2DA"/>
+<rect x="162" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="173.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="186" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="197.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="210" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="221.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="234" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="245.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="258" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="269.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="285" y1="34" x2="285" y2="78" stroke="#C9D2DA"/>
+<rect x="290" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="301.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="314" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="325.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="341" y1="34" x2="341" y2="78" stroke="#C9D2DA"/>
+<rect x="346" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="357.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="370" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="381.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="394" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="405.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="418" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="429.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="442" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="453.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="469" y1="34" x2="469" y2="78" stroke="#C9D2DA"/>
+<rect x="474" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="485.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="498" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="509.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="522" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="533.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="546" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="557.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="570" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="581.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="594" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="605.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="618" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="629.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="645" y1="34" x2="645" y2="78" stroke="#C9D2DA"/>
+<rect x="650" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="661.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="674" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="685.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="698" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="709.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="722" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="733.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="749" y1="34" x2="749" y2="78" stroke="#C9D2DA"/>
+<rect x="754" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="765.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="778" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="789.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<rect x="802" y="32" width="21" height="30" rx="4" fill="#E3F2FD" stroke="#9CC1EA"/>
+<text x="813.5" y="76" text-anchor="middle" font-size="9" fill="#546E7A">한글</text>
+<line x1="829" y1="34" x2="829" y2="78" stroke="#C9D2DA"/>
+<rect x="1" y="85" width="190" height="355" fill="#fff" stroke="#D0D7DE"/>
+<rect x="8" y="92" width="176" height="110" fill="#FFEBEE" stroke="#E53935"/>
+<text x="96" y="152" text-anchor="middle" font-size="12" fill="#C62828">미니맵</text>
+<rect x="8" y="202" width="176" height="6" fill="#D7DEE5"/>
+<rect x="8" y="212" width="176" height="24" fill="#EEF2F6" stroke="#D0D7DE"/>
+<text x="14" y="228" font-size="12" fill="#263238" font-weight="700">Layers</text>
+<rect x="14" y="246" width="12" height="12" fill="#fff" stroke="#546E7A"/>
+<rect x="32" y="246" width="12" height="12" fill="#BBDEFB" stroke="#1565C0"/>
+<text x="52" y="257" font-size="12" fill="#263238">Equipment</text>
+<rect x="14" y="272" width="12" height="12" fill="#fff" stroke="#546E7A"/>
+<rect x="32" y="272" width="12" height="12" fill="#BBDEFB" stroke="#1565C0"/>
+<text x="52" y="283" font-size="12" fill="#263238">Equipment-poly</text>
+<rect x="14" y="298" width="12" height="12" fill="#fff" stroke="#546E7A"/>
+<rect x="32" y="298" width="12" height="12" fill="#BBDEFB" stroke="#1565C0"/>
+<text x="52" y="309" font-size="12" fill="#263238">Wall</text>
+<rect x="195" y="85" width="450" height="355" fill="#FAFBFC" stroke="#D0D7DE"/>
+<rect x="230" y="120" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="265" cy="155" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="330" y="120" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="365" cy="155" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="230" y="220" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="265" cy="255" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="330" y="220" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="365" cy="255" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="430" y="170" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="465" cy="205" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="520" y="120" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="555" cy="155" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="520" y="250" width="70" height="70" fill="none" stroke="#1F77B4" stroke-width="1.5"/>
+<circle cx="555" cy="285" r="22" fill="none" stroke="#1F77B4"/>
+<rect x="425" y="165" width="80" height="80" fill="none" stroke="#FFD700" stroke-width="2.5" stroke-dasharray="6 3"/>
+<text x="420" y="268" font-size="11" fill="#8D6E00">선택된 객체</text>
+<text x="420" y="430" text-anchor="middle" font-size="12" fill="#78909C">2D 뷰 (지도 화면)</text>
+<rect x="650" y="85" width="209" height="355" fill="#fff" stroke="#D0D7DE"/>
+<text x="660" y="105" font-size="12" font-weight="700" fill="#263238">속성 패널</text>
+<rect x="658" y="115" width="193" height="18" fill="#F4F6F8" stroke="#E0E6EC"/>
+<rect x="658" y="137" width="193" height="18" fill="#F4F6F8" stroke="#E0E6EC"/>
+<rect x="658" y="159" width="193" height="18" fill="#F4F6F8" stroke="#E0E6EC"/>
+<rect x="658" y="181" width="193" height="18" fill="#F4F6F8" stroke="#E0E6EC"/>
+<rect x="658" y="203" width="193" height="18" fill="#F4F6F8" stroke="#E0E6EC"/>
+<rect x="658" y="225" width="193" height="18" fill="#F4F6F8" stroke="#E0E6EC"/>
+<rect x="1" y="440" width="858" height="29" fill="#EEF2F6" stroke="#D0D7DE"/>
+<text x="10" y="459" font-size="11" fill="#37474F">● 서버 · 사용자 · 동기화 상태          좌표 · 확대율 · 선택 수 · EPSG:5186 · 빌드 번호</text>
+<circle cx="450" cy="14" r="12" fill="#C62828"/><text x="450" y="18.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">1</text>
+<circle cx="430" cy="56" r="12" fill="#C62828"/><text x="430" y="60.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">2</text>
+<circle cx="100" cy="120" r="12" fill="#C62828"/><text x="100" y="124.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">3</text>
+<circle cx="100" cy="225" r="12" fill="#C62828"/><text x="100" y="229.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">4</text>
+<circle cx="560" cy="300" r="12" fill="#C62828"/><text x="560" y="304.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">5</text>
+<circle cx="750" cy="270" r="12" fill="#C62828"/><text x="750" y="274.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">6</text>
+<circle cx="430" cy="455" r="12" fill="#C62828"/><text x="430" y="459.5" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">7</text></svg><figcaption>그림 1. 메인 화면 구성 (번호는 표 1 참고)</figcaption></figure>
+<table><caption style="text-align:left;font-weight:700;margin-bottom:4px">표 1. 화면 영역</caption><thead><tr><th style="width:44px">번호</th><th style="width:150px">영역</th><th>설명</th></tr></thead><tbody><tr><td>1</td><td>메뉴 막대</td><td>File / Edit / View / Layer / Tools / Admin / Help. 툴바의 모든 기능과 일부 추가 기능이 있습니다.</td></tr><tr><td>2</td><td>툴바</td><td>자주 쓰는 기능 버튼. 의미가 비슷한 버튼끼리 구분선으로 묶여 있고, 아이콘 아래에 한글 2자 이름표가 있습니다. 창이 좁으면 줄이 바뀝니다.</td></tr><tr><td>3</td><td>미니맵</td><td>전체 도면과 지금 보고 있는 범위(빨간 사각형)를 보여 줍니다. 클릭·드래그로 이동합니다. 아래 경계선을 끌어 높이를 바꿀 수 있습니다.</td></tr><tr><td>4</td><td>레이어 패널</td><td>레이어 목록(표시 체크, 색 사각형, 이름). 헤더에 불러오기·새로고침·삭제·전체 표시·전체 숨김 버튼이 있습니다.</td></tr><tr><td>5</td><td>2D 뷰</td><td>도면이 그려지는 중앙 화면. 선택과 편집이 모두 여기서 일어납니다.</td></tr><tr><td>6</td><td>속성 패널</td><td>선택한 객체의 종류·레이어·속성(삽입점, 회전 등)과 조작 안내.</td></tr><tr><td>7</td><td>상태 표시줄</td><td>서버 연결, 로그인한 사용자, 동기화 상태, 마우스 좌표, 확대율, 선택 수, 좌표계(EPSG:5186), 빌드 번호.</td></tr></tbody></table>
+<div class="tip"><b>패널 숨기기</b><span>View 메뉴에서 레이어 패널, 속성 패널, 상태 표시줄을 숨기거나 보일 수 있습니다. 패널 사이 경계선을 끌면 폭이 바뀝니다.</span></div>
+<h3>툴바와 2D 뷰의 관계</h3>
+<p>툴바의 각 그룹은 2D 뷰에 서로 다른 영향을 줍니다. <b>보기</b> 그룹은 화면만 바꾸고 데이터는 건드리지 않습니다. <b>객체 편집</b> 그룹은 편집 모드에서 선택된 객체를 바꾸며, 저장하기 전까지는 이 PC 화면에만 있습니다.</p>
+<figure id="fig2"><svg viewBox="0 0 810 520" role="img" aria-label="툴바와 2D 뷰의 관계" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="10" y="12" width="330" height="58" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="175.0" y="37.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">① 서버 · DXF</text>
+<text x="175.0" y="52.5" text-anchor="middle" font-size="12" fill="#263238">서버 입력 장비 중단 제거 출력</text>
+<line x1="340" y1="41" x2="470" y2="41" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="12" width="330" height="58" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="635.0" y="37.5" text-anchor="middle" font-size="12" fill="#263238">서버 연결, DXF를 읽어 DB에 저장,</text>
+<text x="635.0" y="52.5" text-anchor="middle" font-size="12" fill="#263238">DB의 장비를 DXF로 내보내기</text>
+<rect x="10" y="82" width="330" height="58" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="175.0" y="107.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">② 보기</text>
+<text x="175.0" y="122.5" text-anchor="middle" font-size="12" fill="#263238">확대 축소 전체 선택 초기</text>
+<line x1="340" y1="111" x2="470" y2="111" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="82" width="330" height="58" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="635.0" y="107.5" text-anchor="middle" font-size="12" fill="#263238">2D 뷰의 배율과 위치를 바꿈</text>
+<text x="635.0" y="122.5" text-anchor="middle" font-size="12" fill="#263238">(데이터는 바뀌지 않음)</text>
+<rect x="10" y="152" width="330" height="58" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="175.0" y="177.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">③ 선택</text>
+<text x="175.0" y="192.5" text-anchor="middle" font-size="12" fill="#263238">모두 해제</text>
+<line x1="340" y1="181" x2="470" y2="181" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="152" width="330" height="58" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="635.0" y="177.5" text-anchor="middle" font-size="12" fill="#263238">2D 뷰에서 선택된 객체 집합을</text>
+<text x="635.0" y="192.5" text-anchor="middle" font-size="12" fill="#263238">만들거나 비움</text>
+<rect x="10" y="222" width="330" height="58" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="175.0" y="247.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">④ 편집 모드</text>
+<text x="175.0" y="262.5" text-anchor="middle" font-size="12" fill="#263238">편집 저장 취소 이전 다시</text>
+<line x1="340" y1="251" x2="470" y2="251" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="222" width="330" height="58" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="635.0" y="247.5" text-anchor="middle" font-size="12" fill="#263238">편집 모드로 전환, 변경을</text>
+<text x="635.0" y="262.5" text-anchor="middle" font-size="12" fill="#263238">DB에 저장하거나 되돌림</text>
+<rect x="10" y="292" width="330" height="58" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="175.0" y="317.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">⑤ 객체 편집</text>
+<text x="175.0" y="332.5" text-anchor="middle" font-size="12" fill="#263238">복제 삭제 그룹 시계 반시 정점 격자</text>
+<line x1="340" y1="321" x2="470" y2="321" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="292" width="330" height="58" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="635.0" y="317.5" text-anchor="middle" font-size="12" fill="#263238">선택된 객체의 위치·모양·</text>
+<text x="635.0" y="332.5" text-anchor="middle" font-size="12" fill="#263238">개수를 바꿈 (저장 전까지 임시)</text>
+<rect x="10" y="362" width="330" height="58" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="175.0" y="387.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">⑥ 도면 · 버전</text>
+<text x="175.0" y="402.5" text-anchor="middle" font-size="12" fill="#263238">버전 이력 비교 도면</text>
+<line x1="340" y1="391" x2="470" y2="391" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="362" width="330" height="58" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="635.0" y="387.5" text-anchor="middle" font-size="12" fill="#263238">버전 저장·비교·복원, 도면(A/B안) 전환,</text>
+<text x="635.0" y="402.5" text-anchor="middle" font-size="12" fill="#263238">비교 결과를 2D 뷰에 색으로 표시</text>
+<rect x="10" y="432" width="330" height="58" rx="8" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="175.0" y="457.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">⑦ 라이브러리 · 설정</text>
+<text x="175.0" y="472.5" text-anchor="middle" font-size="12" fill="#263238">블록 등록 설정</text>
+<line x1="340" y1="461" x2="470" y2="461" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="470" y="432" width="330" height="58" rx="8" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="635.0" y="465.0" text-anchor="middle" font-size="12" fill="#263238">블록 라이브러리 창, 설정 창을 열기</text>
+<text x="175" y="510" text-anchor="middle" font-size="12" fill="#546E7A">툴바 (아이콘 + 한글 2자)</text>
+<text x="635" y="510" text-anchor="middle" font-size="12" fill="#546E7A">2D 뷰에서 일어나는 일</text></svg><figcaption>그림 2. 툴바 버튼 그룹과 2D 뷰의 관계</figcaption></figure>
+<h3>툴바 한눈에 보기</h3>
+<div class="strip">
+<div class="sgroup">
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>서버</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>입력</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>장비</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>중단</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>제거</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>출력</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>확대</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>축소</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>전체</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>선택</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>초기</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#FFF3E0;border-color:#EF6C00"><i style="background:#EF6C00"></i>모두</span>
+<span class="btnmock" style="background:#FFF3E0;border-color:#EF6C00"><i style="background:#EF6C00"></i>해제</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>편집</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>저장</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>취소</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>이전</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>다시</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>복제</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>삭제</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>그룹</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>시계</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>반시</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>정점</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>격자</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>버전</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>이력</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>비교</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>도면</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>블록</span>
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>등록</span>
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>캡처</span>
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>설정</span>
+</div>
+</div>
+<p class="muted">버튼에 마우스를 올리면 설명(툴팁)과 단축키가 나옵니다. 사용할 수 없는 상태의 버튼은 흐리게 표시됩니다. 전체 설명은 <a href="#s16">16장</a>에 있습니다.</p>
+<h3>전체 업무 흐름</h3>
+<figure id="fig3"><svg viewBox="0 0 830 230" role="img" aria-label="전체 업무 흐름" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="10" y="40" width="100" height="62" rx="8" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="60.0" y="67.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">서버 연결</text>
+<text x="60.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238">로그인</text>
+<line x1="110" y1="71" x2="128" y2="71" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="128" y="40" width="100" height="62" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="178.0" y="67.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">DXF 입력</text>
+<text x="178.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238">(Import)</text>
+<line x1="228" y1="71" x2="246" y2="71" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="246" y="40" width="100" height="62" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="296.0" y="67.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">레이어 선택</text>
+<text x="296.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238">불러오기</text>
+<line x1="346" y1="71" x2="364" y2="71" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="364" y="40" width="100" height="62" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="414.0" y="67.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">2D 뷰에서</text>
+<text x="414.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238">조회·확인</text>
+<line x1="464" y1="71" x2="482" y2="71" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="482" y="40" width="100" height="62" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="532.0" y="67.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">편집 모드</text>
+<text x="532.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238">객체 편집</text>
+<line x1="582" y1="71" x2="600" y2="71" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="600" y="40" width="100" height="62" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="650.0" y="75.0" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">저장</text>
+<line x1="700" y1="71" x2="718" y2="71" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="718" y="40" width="100" height="62" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="768.0" y="67.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">DXF 출력</text>
+<text x="768.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238">(Export)</text>
+<rect x="400" y="150" width="250" height="56" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="525.0" y="174.5" text-anchor="middle" font-size="12" fill="#263238">다른 사용자가 저장하면</text>
+<text x="525.0" y="189.5" text-anchor="middle" font-size="12" fill="#263238">“갱신하시겠습니까?” 창 → 예: 다시 불러오기</text>
+<line x1="570" y1="102" x2="530" y2="150" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<line x1="400" y1="178" x2="245" y2="102" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/></svg><figcaption>그림 3. 전체 업무 흐름</figcaption></figure>
+<h2 id="s2">2. 서버 연결과 로그인</h2>
+<h3>2.1 서버 연결</h3>
+<ol class="steps"><li>프로그램을 시작하면 저장된 연결 정보로 자동 접속합니다. 실패하면 <b>서버 연결</b> 창이 뜹니다. 툴바 <span class="chip" style="background:#E3F2FD;border-color:#1565C0">서버</span>로도 열 수 있습니다.</li><li>Host, Port, Database, Username, Password를 입력하고 접속을 시험합니다.</li><li>성공하면 정보가 저장되어 다음 실행부터 자동으로 연결됩니다. 연결 상태는 상태 표시줄 왼쪽의 점(초록=연결됨)으로 확인합니다.</li></ol>
+<div class="shot"><div class="shotbox">[ 화면 캡처 1 자리 ]<br><small>서버 연결 창</small></div></div>
+<h3>2.2 로그인</h3>
+<ol class="steps"><li>연결 후 <b>로그인 창</b>이 나옵니다. 위쪽에는 프로그램 그림, 아래쪽에 ID와 Password 입력란이 있습니다.</li><li>ID/Password를 입력하고 <b>Log in</b>을 누릅니다. 마지막으로 쓴 ID는 기억됩니다.</li><li>사용자가 한 명도 없는 새 서버에서는 <b>첫 관리자 만들기</b> 화면(Name, Confirm password 추가)이 나옵니다.</li></ol>
+<div class="shot"><div class="shotbox">[ 화면 캡처 2 자리 ]<br><small>로그인 창</small></div></div>
+<div class="note"><b>로그인 규칙</b><span>비밀번호를 5회 연속 틀리면 15분간 잠깁니다(관리자가 잠금 해제 가능). 임시 비밀번호로 로그인하면 바로 새 비밀번호로 바꿔야 합니다. 로그인하기 전에는 데이터 기능이 막혀 있습니다.</span></div>
+<h3>2.3 권한에 따라 달라지는 화면</h3>
+<p>사용자는 역할(Admin, LibraryManager, Designer, Viewer 등)에 따라 권한을 가집니다. 권한이 없는 기능은 버튼이 흐리거나, 누르면 “권한이 없습니다” 메시지가 나옵니다.</p>
+<table><thead><tr><th style="width:180px">권한</th><th>해당 기능</th></tr></thead><tbody><tr><td><code>drawing.view</code></td><td>도면 조회, 레이어 불러오기</td></tr><tr><td><code>drawing.edit</code></td><td>편집 모드, 저장, 레이어 이름 변경</td></tr><tr><td><code>drawing.delete</code></td><td>객체 삭제, 레이어 삭제</td></tr><tr><td><code>drawing.export</code></td><td>DXF 내보내기</td></tr><tr><td><code>import.dxf</code></td><td>DXF 입력, Import한 데이터 삭제</td></tr><tr><td><code>library.*</code></td><td>블록 라이브러리 조회·등록·수정·삭제·게시</td></tr><tr><td><code>user.manage</code></td><td>사용자·역할 관리</td></tr></tbody></table>
+<h2 id="s3">3. 데이터 불러오기</h2>
+<h3>3.1 DXF 입력 (Import)</h3>
+<ol class="steps"><li>툴바 <span class="chip" style="background:#E3F2FD;border-color:#1565C0">입력</span>을 누릅니다. (<code>import.dxf</code> 권한 필요)</li><li>서버에 이미 같은 DXF 데이터가 있으면 삭제하고 다시 넣을지 묻습니다.</li><li>진행 상황이 표시되고, 끝나면 DXF와 DB의 수량이 비교되어 기록됩니다. 진행 중에는 <span class="chip" style="background:#E3F2FD;border-color:#1565C0">중단</span>으로 취소할 수 있습니다(저장 내용은 롤백).</li></ol>
+<div class="tip"><b>장비만 가져오기</b><span><span class="chip" style="background:#E3F2FD;border-color:#1565C0">장비</span>를 켜고 입력하면 Equipment 레이어의 블록(INSERT)만 객체로 가져옵니다. 다른 레이어와 낙서 같은 선은 제외됩니다.</span></div>
+<div class="warn"><b>현재 제한</b><span>입력하는 DXF 파일이 정해진 경로(<code>data\SmartLayout.dxf</code>)로 고정되어 있습니다. 파일 선택 창은 아직 없습니다. <span class="chip" style="background:#E3F2FD;border-color:#1565C0">제거</span>는 Import한 데이터를 모두 지우며 되돌릴 수 없습니다.</span></div>
+<h3>3.2 레이어 선택 불러오기</h3>
+<p>시작하면 레이어 목록만 먼저 읽고, <b>Select layers to load</b> 창에서 화면에 불러올 레이어를 고릅니다. 선택은 저장되어 다음에도 유지됩니다. 나중에 바꾸려면 레이어 패널 헤더의 <b>불러오기</b> 버튼(또는 Layer 메뉴 → Load layers…)을 쓰고, 서버의 최신 데이터를 다시 받으려면 <b>새로고침</b>을 누릅니다.</p>
+<div class="shot"><div class="shotbox">[ 화면 캡처 3 자리 ]<br><small>레이어 선택 창</small></div></div>
+<h2 id="s4">4. 보기 조작</h2>
+<table><thead><tr><th style="width:200px">하고 싶은 일</th><th>방법</th></tr></thead><tbody><tr><td>확대·축소</td><td>마우스 휠(커서 위치 기준) 또는 툴바 <span class="chip" style="background:#E0F2F1;border-color:#00796B">확대</span> <span class="chip" style="background:#E0F2F1;border-color:#00796B">축소</span></td></tr><tr><td>화면 이동(패닝)</td><td>마우스 <b>가운데 버튼</b>을 누른 채 끌기</td></tr><tr><td>전체 보기</td><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">전체</span> 또는 <kbd>F</kbd></td></tr><tr><td>선택한 객체로 확대</td><td>객체를 선택하고 <span class="chip" style="background:#E0F2F1;border-color:#00796B">선택</span></td></tr><tr><td>처음 상태로</td><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">초기</span></td></tr><tr><td>미니맵으로 이동</td><td>미니맵을 클릭하거나 끌면 그 위치로 2D 뷰가 이동합니다.</td></tr><tr><td>특정 레이어로 확대</td><td>레이어 행을 우클릭 → <b>Zoom to layer</b></td></tr></tbody></table>
+<div class="note"><b>선 굵기</b><span>확대·축소해도 선의 화면 굵기는 일정하게 유지됩니다. 굵기는 레이어 속성에서 바꿉니다.</span></div>
+<div class="tip"><b>미니맵 높이 조절</b><span>미니맵과 레이어 목록 사이의 가는 경계선을 위아래로 끌면 미니맵 높이가 바뀝니다(최소 60).</span></div>
+<h2 id="s5">5. 객체 선택과 속성 확인</h2>
+<p>조회 모드에서 2D 뷰의 객체를 클릭하면 선택됩니다. 블록 객체는 어느 선을 눌러도 <b>블록 전체</b>가 하나로 선택되어 윤곽이 표시됩니다. 선택하면 속성 패널에 종류, 형상, 좌표계, 속성 표가 나옵니다. 빈 곳을 누르면 선택이 풀립니다. 숨긴 레이어의 객체는 선택되지 않습니다.</p>
+<div class="note"><b>조회 모드의 선택은 1개</b><span>조회 모드에서는 한 번에 하나만 선택됩니다. 여러 개를 한꺼번에 선택하려면 편집 모드(8장)를 사용하세요.</span></div>
+<h3>선택 강조 모양 바꾸기</h3>
+<p><b>설정 → General → Selection outline</b>에서 선택 테두리 색상(팔레트·RGB·Hex)과 두께(0.5~8 px)를 정합니다. 기본값은 노란색 1.5 px입니다. 설정 창의 미리보기로 확인한 뒤 OK를 누르면 즉시 반영됩니다.</p>
+<h2 id="s6">6. 레이어 관리</h2>
+<h3>6.1 레이어 패널</h3>
+<table><thead><tr><th style="width:180px">요소</th><th>설명</th></tr></thead><tbody><tr><td>체크 박스</td><td>레이어 표시/숨김</td></tr><tr><td>색 사각형</td><td>레이어 색 표시. 누르면 그 레이어의 <b>편집 모드</b>가 켜지고 꺼집니다.</td></tr><tr><td>행 드래그</td><td>레이어 쌓임 순서 변경 (위에 있는 레이어가 위에 그려지고 먼저 선택됨)</td></tr><tr><td>행 우클릭</td><td>Zoom to layer, Style…, Edit this layer, Show only this layer, Hide this layer, Delete this layer…</td></tr><tr><td>헤더 버튼</td><td>불러오기, 새로고침, 삭제(선택한 레이어), 전체 표시, 전체 숨김</td></tr></tbody></table>
+<h3>6.2 레이어 속성 (이름 · 선 · 채우기)</h3>
+<ol class="steps"><li>레이어 행을 우클릭 → <b>Style…</b> 을 선택합니다.</li><li><b>Layer name</b>에서 이름을 바꿉니다.</li><li><b>Line</b> 탭: 선 색상과 두께(0.25~8 px)를 정합니다.</li><li><b>Fill</b> 탭: 면 채우기 색상과 투명도(0~100 %)를 정합니다. “Same color as line”을 켜면 선 색과 같아집니다.</li><li>아래 미리보기를 확인하고 <b>OK</b>. <b>Reset style</b>은 스타일만 기본값으로 되돌립니다.</li></ol>
+<div class="shot"><div class="shotbox">[ 화면 캡처 4 자리 ]<br><small>레이어 속성 창 (Line / Fill 탭)</small></div></div>
+<div class="warn"><b>이름 변경 주의</b><span>이름은 서버의 모든 객체에 적용되며 다른 사용자에게도 알려집니다. 이미 있는 이름(대소문자만 달라도 같은 이름)은 쓸 수 없습니다. 편집 모드 중에는 바꿀 수 없고, <code>drawing.edit</code> 권한이 필요합니다.</span></div>
+<h3>6.3 레이어 삭제</h3>
+<p>레이어를 선택하고 레이어 패널 헤더의 삭제 버튼(또는 우클릭 → Delete this layer…)을 누르면 확인 창(기본 선택 “아니오”)이 나옵니다. 확인하면 그 레이어의 모든 객체가 서버에서 삭제됩니다.</p>
+<div class="warn"><b>되돌릴 수 없음</b><span><code>drawing.delete</code> 권한이 필요하며, 편집 모드 중에는 실행되지 않습니다. 삭제한 레이어는 복구할 수 없으니 필요하면 먼저 DXF로 내보내 두세요.</span></div>
+<h2 id="s7">7. 편집 모드·저장</h2>
+<figure id="fig4"><svg viewBox="0 0 840 280" role="img" aria-label="모드 전환" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="40" y="40" width="260" height="120" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="170.0" y="80.5" text-anchor="middle" font-size="13" fill="#263238" font-weight="700">조회 모드 (기본)</text>
+<text x="170.0" y="96.5" text-anchor="middle" font-size="13" fill="#263238">· 클릭으로 객체 1개 선택</text>
+<text x="170.0" y="112.5" text-anchor="middle" font-size="13" fill="#263238">· 확대/축소/이동</text>
+<text x="170.0" y="128.5" text-anchor="middle" font-size="13" fill="#263238">· 편집 버튼은 회색</text>
+<rect x="520" y="40" width="280" height="120" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="660.0" y="80.5" text-anchor="middle" font-size="13" fill="#263238" font-weight="700">편집 모드</text>
+<text x="660.0" y="96.5" text-anchor="middle" font-size="13" fill="#263238">· Shift/Ctrl+클릭, 범위 선택</text>
+<text x="660.0" y="112.5" text-anchor="middle" font-size="13" fill="#263238">· 이동·회전·복제·삭제·그룹</text>
+<text x="660.0" y="128.5" text-anchor="middle" font-size="13" fill="#263238">· Undo/Redo 사용 가능</text>
+<line x1="300" y1="80" x2="520" y2="80" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="410.0" y="75.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">툴바 “편집” 또는
+레이어의 색 사각형 클릭</text>
+<line x1="520" y1="125" x2="300" y2="125" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="410.0" y="120.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">“저장” 또는 “취소”</text>
+<rect x="40" y="200" width="260" height="60" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="170.0" y="226.5" text-anchor="middle" font-size="12" fill="#263238">서버 연결 + 로그인</text>
+<text x="170.0" y="241.5" text-anchor="middle" font-size="12" fill="#263238">+ 편집 권한이 있어야 전환 가능</text>
+<line x1="170" y1="200" x2="170" y2="160" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="520" y="200" width="280" height="60" rx="8" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="660.0" y="226.5" text-anchor="middle" font-size="12" fill="#263238">저장하지 않은 변경이 있으면</text>
+<text x="660.0" y="241.5" text-anchor="middle" font-size="12" fill="#263238">나갈 때 버릴지 묻는다</text>
+<line x1="660" y1="200" x2="660" y2="160" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/></svg><figcaption>그림 4. 조회 모드와 편집 모드의 전환</figcaption></figure>
+<h3>7.1 편집 모드 시작과 끝</h3>
+<ol class="steps"><li>툴바 <span class="chip" style="background:#E8F5E9;border-color:#2E7D32">편집</span>을 누릅니다. 현재 <b>보이는</b> 모든 레이어가 편집 대상입니다. 한 레이어만 편집하려면 그 레이어의 색 사각형을 누릅니다.</li><li>편집 모드에서는 커서가 십자 모양이 되고, 객체 외곽이 점선으로 표시됩니다. 편집 대상 레이어의 원래 그림은 숨겨져 잔상이 남지 않습니다.</li><li>끝낼 때는 <span class="chip" style="background:#E8F5E9;border-color:#2E7D32">편집</span>을 한 번 더 눌러 나갑니다. 저장하지 않은 변경은 <span class="chip" style="background:#E8F5E9;border-color:#2E7D32">취소</span>로 버리고 나갑니다.</li></ol>
+<div class="note"><b>편집 모드의 조건</b><span>서버에 연결되어 있고 <code>drawing.edit</code> 권한이 있어야 합니다. 편집 중에는 레이어 새로고침·불러오기·이름 변경·삭제가 막힙니다(저장 또는 취소 후 가능).</span></div>
+<h3>7.2 저장과 충돌 처리</h3>
+<figure id="fig5"><svg viewBox="0 0 860 270" role="img" aria-label="저장과 충돌 처리" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="10" y="60" width="130" height="52" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="75.0" y="90.5" text-anchor="middle" font-size="13" fill="#263238" font-weight="700">저장 (Ctrl+S)</text>
+<rect x="190" y="60" width="160" height="52" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="270.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">겹침 검사</text>
+<text x="270.0" y="97.5" text-anchor="middle" font-size="12" fill="#263238">(저장 직전)</text>
+<line x1="140" y1="86" x2="190" y2="86" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="190" y="160" width="160" height="52" rx="8" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="270.0" y="182.5" text-anchor="middle" font-size="12" fill="#263238">겹침 있음 → 저장 중단</text>
+<text x="270.0" y="197.5" text-anchor="middle" font-size="12" fill="#263238">겹침을 해결한 뒤 다시</text>
+<line x1="270" y1="112" x2="270" y2="160" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="270.0" y="131.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">있음</text>
+<rect x="400" y="60" width="190" height="52" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="495.0" y="82.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">변경한 객체마다</text>
+<text x="495.0" y="97.5" text-anchor="middle" font-size="12" fill="#263238">“내가 읽은 뒤 바뀌었나?”</text>
+<line x1="350" y1="86" x2="400" y2="86" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="375.0" y="81.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">없음</text>
+<rect x="640" y="20" width="200" height="52" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="740.0" y="50.0" text-anchor="middle" font-size="12" fill="#263238">안 바뀜 → 저장 성공</text>
+<rect x="640" y="110" width="200" height="66" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="740.0" y="132.0" text-anchor="middle" font-size="12" fill="#263238">바뀜(충돌) → 그 객체는</text>
+<text x="740.0" y="147.0" text-anchor="middle" font-size="12" fill="#263238">덮어쓰지 않고 안내</text>
+<text x="740.0" y="162.0" text-anchor="middle" font-size="12" fill="#263238">나머지는 정상 저장</text>
+<line x1="590" y1="74" x2="640" y2="48" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="590" y1="98" x2="640" y2="135" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="400" y="200" width="440" height="52" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="620.0" y="230.0" text-anchor="middle" font-size="12" fill="#263238">저장이 끝나면 다른 사용자 화면에 “서버 데이터가 변경되었습니다” 알림</text>
+<line x1="740" y1="176" x2="740" y2="200" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/></svg><figcaption>그림 5. 저장과 충돌 처리</figcaption></figure>
+<ul><li><b>저장 후에도 편집 화면이 유지됩니다.</b> 확대·화면 위치, 숨긴 레이어, 편집 모드와 편집 중인 레이어가 그대로이고, 서버에 저장된 데이터가 다시 표시됩니다. 선택과 Undo/Redo 이력만 비워집니다.</li><li><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">저장</span> 또는 <kbd>Ctrl</kbd>+<kbd>S</kbd> — 이동·회전·추가·삭제가 한 번에 저장됩니다. 중간에 오류가 나면 전부 취소됩니다.</li><li>내가 읽은 뒤 다른 사람이 같은 객체를 바꿨다면, 그 객체는 <b>덮어쓰지 않고</b> 번호를 알려 줍니다. 나머지는 정상 저장됩니다.</li><li>장비가 서로 겹쳐 있으면 저장되지 않습니다.</li></ul>
+<h3>7.3 자동 저장</h3>
+<p>설정 → General → <b>Auto-save edits</b>를 켜고 간격(1~120분)을 정하면, 편집 모드에서 그 간격마다 자동으로 저장됩니다. 저장 뒤 편집 모드가 이어지고(수동 저장과 같음) 선택은 해제됩니다. 장비가 겹쳐 있거나 충돌이 있으면 자동 저장은 건너뜁니다.</p>
+<h3>7.4 다른 사용자의 변경 알림</h3>
+<p>다른 사용자가 내가 불러온 레이어를 저장하면 “서버 데이터가 변경되었습니다. 갱신하시겠습니까?” 창이 뜹니다(누가, 어느 레이어를, 몇 개).</p>
+<ul><li><b>예</b>: 그 레이어를 다시 불러옵니다. 줌 위치와 숨긴 레이어는 유지됩니다.</li><li><b>아니오</b>: 상태 표시줄에 “갱신 대기 (N건)”로 남습니다. 그것을 누르면 다시 확인할 수 있습니다.</li><li>편집 모드 중에는 묻지 않고, 저장하거나 취소한 뒤에 묻습니다. 내가 저장한 변경은 알리지 않습니다.</li></ul>
+<h2 id="s8">8. 객체 선택 방법 (편집 모드)</h2>
+<table><thead><tr><th style="width:230px">방법</th><th>결과</th></tr></thead><tbody><tr><td>객체 클릭</td><td>그 객체 하나만 선택</td></tr><tr><td><kbd>Shift</kbd>+클릭 (또는 <kbd>Ctrl</kbd>+클릭)</td><td>선택에 추가. 이미 선택된 객체를 다시 누르면 선택에서 뺌</td></tr><tr><td>빈 곳에서 <b>드래그</b> (범위 선택)</td><td>파란 점선 사각형에 <b>조금이라도 걸치는</b> 장비가 모두 선택됨</td></tr><tr><td><kbd>Shift</kbd>/<kbd>Ctrl</kbd>을 누르고 드래그</td><td>기존 선택에 범위 안의 장비를 추가</td></tr><tr><td>툴바 <span class="chip" style="background:#FFF3E0;border-color:#EF6C00">모두</span> 또는 <kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>편집 중인 모든 객체 선택</td></tr><tr><td>툴바 <span class="chip" style="background:#FFF3E0;border-color:#EF6C00">해제</span>, 빈 곳 클릭</td><td>선택 모두 해제</td></tr></tbody></table>
+<div class="note"><b>범위 선택 규칙</b><span>장비(블록 객체)는 외곽선이 사각형에 닿기만 해도 선택됩니다. 레이어 전체 외곽선처럼 큰 일반 객체는 사각형 안에 완전히 들어올 때만 선택되어, 큰 외곽선이 딸려 오는 일을 막습니다.</span></div>
+<div class="shot"><div class="shotbox">[ 화면 캡처 5 자리 ]<br><small>범위 선택 중인 2D 뷰 (파란 점선 사각형, 선택된 장비의 노란 점선)</small></div></div>
+<p>여러 객체를 선택하면 속성 패널에 “N objects selected”가 표시되고, 아래 9장의 모든 동작이 <b>선택된 전체</b>에 한꺼번에 적용됩니다.</p>
+<h2 id="s9">9. 이동 · 회전 · 복제 · 삭제 · 그룹</h2>
+<figure id="fig6"><svg viewBox="0 0 870 240" role="img" aria-label="객체 편집 흐름" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="10" y="20" width="140" height="56" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="80.0" y="37.0" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">1. 선택</text>
+<text x="80.0" y="52.0" text-anchor="middle" font-size="12" fill="#263238">클릭 · Shift+클릭</text>
+<text x="80.0" y="67.0" text-anchor="middle" font-size="12" fill="#263238">범위 선택 · 전체</text>
+<rect x="190" y="20" width="160" height="56" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="270.0" y="37.0" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">2. 편집 동작</text>
+<text x="270.0" y="52.0" text-anchor="middle" font-size="12" fill="#263238">이동 · Ctrl+방향키</text>
+<text x="270.0" y="67.0" text-anchor="middle" font-size="12" fill="#263238">회전 · 복제 · 삭제 · 그룹</text>
+<rect x="390" y="20" width="150" height="56" rx="8" fill="#E0F2F1" stroke="#00796B" stroke-width="1.6"/>
+<text x="465.0" y="44.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">3. 2D 뷰에 즉시 반영</text>
+<text x="465.0" y="59.5" text-anchor="middle" font-size="12" fill="#263238">(아직 서버에 없음)</text>
+<rect x="580" y="20" width="130" height="56" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="645.0" y="44.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">4. 저장</text>
+<text x="645.0" y="59.5" text-anchor="middle" font-size="12" fill="#263238">Ctrl+S</text>
+<rect x="750" y="20" width="100" height="56" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="800.0" y="37.0" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">서버 DB</text>
+<text x="800.0" y="52.0" text-anchor="middle" font-size="12" fill="#263238">+ 다른 사용자</text>
+<text x="800.0" y="67.0" text-anchor="middle" font-size="12" fill="#263238">알림</text>
+<line x1="150" y1="48" x2="190" y2="48" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="350" y1="48" x2="390" y2="48" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="540" y1="48" x2="580" y2="48" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<line x1="710" y1="48" x2="750" y2="48" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="190" y="150" width="160" height="52" rx="8" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="270.0" y="172.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">Undo  Ctrl+Z</text>
+<text x="270.0" y="187.5" text-anchor="middle" font-size="12" fill="#263238">Redo  Ctrl+R</text>
+<line x1="465" y1="76" x2="300" y2="150" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="362.5" y="108.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">되돌리기</text>
+<rect x="390" y="150" width="150" height="52" rx="8" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="465.0" y="172.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">ESC : 저장하지 않은</text>
+<text x="465.0" y="187.5" text-anchor="middle" font-size="12" fill="#263238">편집 전체 취소</text>
+<line x1="465" y1="76" x2="465" y2="150" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<rect x="580" y="150" width="270" height="70" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="715.0" y="167.0" text-anchor="middle" font-size="11.5" fill="#263238">장비영역 겹침이면 이동/회전/복제가</text>
+<text x="715.0" y="181.5" text-anchor="middle" font-size="11.5" fill="#263238">거부되고 이전 위치로 돌아간다.</text>
+<text x="715.0" y="196.0" text-anchor="middle" font-size="11.5" fill="#263238">저장할 때 다른 사용자가 먼저 바꾼 객체는</text>
+<text x="715.0" y="210.5" text-anchor="middle" font-size="11.5" fill="#263238">덮어쓰지 않고 안내만 한다.</text></svg><figcaption>그림 6. 객체 편집 흐름 (선택 → 편집 → 저장)</figcaption></figure>
+<h3>9.1 이동</h3>
+<ul><li><b>마우스</b>: 선택된 객체 중 아무거나 끌어서 놓습니다. 선택된 모든 객체가 함께 움직입니다.</li><li><b>키보드</b>: <kbd>Ctrl</kbd>+<kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd>. 한 번에 1 단위, <b>격자</b> 버튼을 켜면 10 단위(한 칸)씩, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+방향키는 10배씩 움직입니다.</li><li>이동하면 속성 패널의 삽입점(<code>block_insert_x/y</code>)도 같이 바뀝니다.</li></ul>
+<h3>9.2 회전</h3>
+<p>툴바 <span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">시계</span> / <span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">반시</span>, 선택 객체 위의 금색 핸들 클릭, 또는 키 <kbd>r</kbd>(시계) / <kbd>Shift</kbd>+<kbd>R</kbd>(반시계). 한 번에 90°이며, 여러 개를 선택했으면 선택 전체의 중심을 기준으로 함께 돕니다. 회전각(<code>block_rotation_deg</code>)은 0~360°로 기록됩니다.</p>
+<h3>9.3 복제와 삭제</h3>
+<ul><li><b>복제</b> <kbd>Ctrl</kbd>+<kbd>D</kbd>: 복사본이 약간 옆에 생기고 복사본들이 새 선택이 됩니다. 바로 끌어서 제자리에 놓으세요. 복사본은 저장할 때 서버에 추가됩니다.</li><li><b>삭제</b> <kbd>Del</kbd>: 삭제 표시가 되고 저장하면 서버에서 지워집니다(<code>drawing.delete</code> 권한 필요). 저장 전에는 Undo로 되돌릴 수 있습니다.</li></ul>
+<h3>9.4 그룹</h3>
+<p>2개 이상을 선택하고 <span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">그룹</span>(<kbd>Ctrl</kbd>+<kbd>G</kbd>)을 누르면 하나의 새 블록으로 묶입니다. 원래 객체는 저장할 때 삭제되고, 묶음은 앞으로 하나의 객체처럼 이동·회전·삭제됩니다.</p>
+<h3>9.5 격자 스냅</h3>
+<p><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">격자</span>를 켜면 이동·복제 위치가 10 단위 격자에 맞춰집니다.</p>
+<h3>9.6 장비영역 겹침 금지</h3>
+<div class="warn"><b>“장비영역 겹침” 오류</b><span>이동·회전·복제 결과 다른 장비와 겹치면 오류를 알리고 <b>이전 위치로 되돌립니다</b>. 변 끝이 맞닿는 것은 허용되고, 면적이 겹치면 거부됩니다. 저장 직전에도 한 번 더 검사합니다.</span></div>
+<h2 id="s10">10. 정점 편집</h2>
+<p>면(폴리곤) 객체 하나를 선택하고 <span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">정점</span>을 누르면 꼭짓점 핸들(사각형)과 변의 중점 핸들(원)이 나타납니다.</p>
+<ul><li>꼭짓점을 끌면 모양이 바뀝니다. 가까운 다른 꼭짓점에는 자동으로 붙습니다.</li><li>중점 핸들을 누르면 그 변에 꼭짓점이 추가됩니다.</li><li>꼭짓점을 <b>우클릭</b>하면 삭제됩니다(면은 최소 3개 필요).</li></ul>
+<div class="note"><b>제한</b><span>블록 객체(장비)와 여러 개를 선택한 경우에는 사용할 수 없습니다. 장비는 이동·회전·복제·그룹으로 편집합니다.</span></div>
+<h2 id="s11">11. Undo / Redo / 편집 취소</h2>
+<table><thead><tr><th style="width:200px">키 · 버튼</th><th>동작</th></tr></thead><tbody><tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> · <span class="chip" style="background:#E8F5E9;border-color:#2E7D32">이전</span></td><td><b>Undo</b>: 직전 편집 하나를 되돌립니다. 최대 100단계.</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd> · <span class="chip" style="background:#E8F5E9;border-color:#2E7D32">다시</span></td><td><b>Redo</b>: 되돌린 편집을 다시 적용합니다.</td></tr><tr><td><kbd>Esc</kbd></td><td><b>편집 취소</b>: 드래그 중이면 그 드래그만 취소, 아니면 저장하지 않은 모든 편집을 버리고 저장된 상태로 돌아갑니다. 버린 내용도 Undo로 되살릴 수 있습니다.</td></tr><tr><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">취소</span></td><td>모든 변경을 버리고 <b>편집 모드까지 끝냅니다</b>(확인 창이 나옵니다).</td></tr></tbody></table>
+<p>Undo/Redo 대상: 이동(마우스·키보드), 회전, 복제, 삭제, 그룹, 정점 편집. 편집 모드에 들어가거나 나올 때, 그리고 저장한 뒤에는 기록이 비워집니다.</p>
+<h2 id="s12">12. DXF 내보내기</h2>
+<ol class="steps"><li>툴바 <span class="chip" style="background:#E3F2FD;border-color:#1565C0">출력</span>(또는 File → Export DXF (blocks)…)을 누릅니다. (<code>drawing.export</code> 권한)</li><li>저장할 파일 이름을 정합니다.</li><li>편집 모드이면 <b>저장 전의 현재 편집 상태</b>가, 조회 모드이면 서버에 저장된 장비가 내보내집니다(숨긴 레이어 제외).</li></ol>
+<h3>내보낸 DXF의 구조</h3>
+<ul><li>장비 이름별로 BLOCK 정의가 하나, 장비 하나마다 INSERT가 하나씩 만들어집니다. CAD에서 일반 블록처럼 열립니다.</li><li>각 INSERT에는 숨김 블록 속성이 들어 있습니다.</li></ul>
+<table><thead><tr><th style="width:120px">속성 태그</th><th>값</th></tr></thead><tbody><tr><td><code>NAME</code></td><td>설비(블록) 이름</td></tr><tr><td><code>ROTATION</code></td><td>회전각(도, 반시계 방향이 +)</td></tr><tr><td><code>POS_X</code> / <code>POS_Y</code></td><td>위치점(삽입점) 좌표</td></tr></tbody></table>
+<div class="note"><b>참고</b><span>속성은 도면에 글자로 보이지 않으며 CAD의 속성 편집/추출 기능으로 읽을 수 있습니다. 이름이 같은 장비는 모양이 같다고 보고 블록 정의 하나를 공유합니다(수정하지 않은 장비의 모양 기준).</span></div>
+<h2 id="s13">13. 블록 라이브러리</h2>
+<p>자주 쓰는 장비 모양을 <b>라이브러리</b>에 등록해 분류·검색하며 관리합니다. 툴바 <span class="chip" style="background:#ECEFF1;border-color:#455A64">블록</span>으로 라이브러리 창을 엽니다.</p>
+<ul><li><b>자동 등록</b>: DXF를 입력하면 블록 이름별로 항목이 만들어지고, 도면의 장비와 연결됩니다.</li><li><b>직접 등록</b>: 장비를 선택하고 <span class="chip" style="background:#ECEFF1;border-color:#455A64">등록</span>. 같은 모양이 이미 있으면 새로 만들지 않고 연결합니다.</li><li><b>라이브러리 창</b>: 왼쪽에 분류 트리, 위에 검색(코드·이름·제조사·모델)과 상태 필터, 가운데 썸네일 목록, 오른쪽에 미리보기와 속성. 분류 추가·이름 변경, 항목 편집·삭제가 가능합니다.</li><li>사용 중인 항목은 삭제되지 않고 <code>deprecated</code>(사용 중지)로 바꾸라고 안내합니다.</li></ul>
+<div class="shot"><div class="shotbox">[ 화면 캡처 6 자리 ]<br><small>블록 라이브러리 창</small></div></div>
+<div class="note"><b>아직 없는 기능</b><span>라이브러리에서 도면에 바로 배치, 모델 교체, 정의 수정 후 도면 자동 갱신, 버전 복원, 포트 편집은 아직 구현되지 않았습니다.</span></div>
+<h2 id="s14">14. 사용자·역할 관리 (관리자용)</h2>
+<p>Admin 메뉴 → <b>User management…</b> (<code>user.manage</code> 권한).</p>
+<ul><li><b>사용자</b>: 등록, 이름/역할 수정, 비활성화, 비밀번호 초기화(임시 비밀번호 발급), 잠금 해제.</li><li><b>역할</b>: 새 역할 만들기, 권한 키 선택. 기본 역할은 Admin / LibraryManager / Designer / Viewer.</li><li>마지막 남은 Admin은 삭제·비활성화할 수 없습니다.</li><li>로그인, 저장, Import, 레이어 삭제·이름 변경, 내보내기, 사용자·역할 변경은 사용자 이름과 함께 <b>감사 로그</b>에 남습니다.</li></ul>
+<div class="shot"><div class="shotbox">[ 화면 캡처 7 자리 ]<br><small>사용자 관리 창</small></div></div>
+<p>내 비밀번호는 Admin 메뉴 → <b>Change my password…</b>에서 바꿀 수 있습니다.</p>
+<h2 id="s15">15. 설정 창</h2>
+<p>툴바 <span class="chip" style="background:#ECEFF1;border-color:#455A64">설정</span> 또는 <kbd>Ctrl</kbd>+<kbd>,</kbd> (Tools → Settings…). 왼쪽 목록에서 페이지를 고르고 <b>OK</b>를 눌러야 저장됩니다.</p>
+<table><thead><tr><th style="width:130px">페이지</th><th>내용</th></tr></thead><tbody><tr><td><b>Login</b></td><td>비밀번호 기억(Windows 계정으로 암호화 저장), 시작할 때 자동 로그인, 저장된 비밀번호 삭제. 로그아웃하면 자동 로그인은 다시 일어나지 않습니다.</td></tr><tr><td><b>Shortcuts</b></td><td>기능을 고르고 아래 입력란에 새 키 조합을 누르면 바뀝니다. Clear(없음), Default(기본값), Reset all(전체 초기화). 텍스트 입력 중에는 단축키가 동작하지 않습니다.</td></tr><tr><td><b>General</b></td><td>자동 저장 사용·간격(1~120분), 선택 강조 색상·두께(Selection outline).</td></tr></tbody></table>
+<div class="shot"><div class="shotbox">[ 화면 캡처 8 자리 ]<br><small>설정 창 (Shortcuts 페이지)</small></div></div>
+<div class="tip"><b>고정 키</b><span>Esc(편집 취소)와 Ctrl+방향키(이동)는 고정이며 바꿀 수 없습니다.</span></div>
+<h2 id="s19">19. 도면과 버전 관리</h2>
+<p>설비 배치를 여러 번 고치면서 <b>어떤 안이 있었는지 남기고, 안끼리 비교하고, 이전 안으로 되돌리고, 두 안을 따로 키워 보는</b> 기능입니다. 서버에 저장되므로 모든 사용자가 같은 버전 목록을 봅니다.</p>
+<figure id="fig7"><svg viewBox="0 0 690 220" role="img" aria-label="도면과 버전 관리 흐름" xmlns="http://www.w3.org/2000/svg" font-family="Malgun Gothic, Segoe UI, sans-serif"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#546E7A"/></marker></defs><rect x="10" y="20" width="150" height="60" rx="8" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.6"/>
+<text x="85.0" y="46.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">작업본</text>
+<text x="85.0" y="61.5" text-anchor="middle" font-size="12" fill="#263238">(화면에서 편집·저장)</text>
+<rect x="260" y="20" width="150" height="60" rx="8" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.6"/>
+<text x="335.0" y="46.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">버전 v1, v2, v3 …</text>
+<text x="335.0" y="61.5" text-anchor="middle" font-size="12" fill="#263238">(바뀌지 않는 사본)</text>
+<rect x="510" y="20" width="150" height="60" rx="8" fill="#FFF3E0" stroke="#EF6C00" stroke-width="1.6"/>
+<text x="585.0" y="46.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">비교 결과</text>
+<text x="585.0" y="61.5" text-anchor="middle" font-size="12" fill="#263238">목록 + 2D 뷰 색</text>
+<line x1="160" y1="40" x2="260" y2="40" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="210.0" y="35.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">버전 저장</text>
+<line x1="260" y1="62" x2="160" y2="62" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="210.0" y="57.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">복원</text>
+<line x1="410" y1="50" x2="510" y2="50" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="460.0" y="45.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">비교</text>
+<rect x="260" y="140" width="150" height="60" rx="8" fill="#F3E5F5" stroke="#6A1B9A" stroke-width="1.6"/>
+<text x="335.0" y="166.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">새 도면 (B안)</text>
+<text x="335.0" y="181.5" text-anchor="middle" font-size="12" fill="#263238">자기 작업본·버전</text>
+<line x1="335" y1="80" x2="335" y2="140" stroke="#546E7A" stroke-width="1.8" marker-end="url(#ah)"/>
+<text x="335.0" y="105.0" text-anchor="middle" font-size="11.5" fill="#37474F" paint-order="stroke" stroke="#fff" stroke-width="3">분기</text>
+<rect x="510" y="140" width="150" height="60" rx="8" fill="#FFEBEE" stroke="#C62828" stroke-width="1.6"/>
+<text x="585.0" y="166.5" text-anchor="middle" font-size="12" fill="#263238" font-weight="700">확정(baseline)</text>
+<text x="585.0" y="181.5" text-anchor="middle" font-size="12" fill="#263238">수정·삭제 불가</text>
+<line x1="410" y1="100" x2="510" y2="150" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/>
+<rect x="10" y="140" width="190" height="60" rx="8" fill="#ECEFF1" stroke="#455A64" stroke-width="1.6"/>
+<text x="105.0" y="166.5" text-anchor="middle" font-size="11.5" fill="#263238">편집 저장마다 자동 버전</text>
+<text x="105.0" y="181.0" text-anchor="middle" font-size="11.5" fill="#263238">복원 직전 상태도 자동 보관</text>
+<line x1="100" y1="80" x2="100" y2="140" stroke="#546E7A" stroke-width="1.8" stroke-dasharray="5 4" marker-end="url(#ah)"/></svg><figcaption>그림 7. 도면과 버전 관리 흐름</figcaption></figure>
+<table><thead><tr><th style="width:130px">용어</th><th>뜻</th></tr></thead><tbody><tr><td><b>도면</b></td><td>배치 하나. 도면마다 <b>작업본</b>(지금 편집하는 데이터)과 <b>버전</b>이 따로 있습니다. 처음에는 “기본 도면” 하나뿐입니다.</td></tr><tr><td><b>버전</b></td><td>도면의 한 시점을 통째로 저장한 사본. 저장한 뒤에는 바뀌지 않습니다.</td></tr><tr><td><b>확정(baseline)</b></td><td>기준으로 정한 버전. 이름 변경·삭제가 막힙니다. 도면당 하나입니다.</td></tr><tr><td><b>분기</b></td><td>버전 하나에서 시작하는 새 도면(B안). 원래 도면과 따로 편집·저장됩니다.</td></tr></tbody></table>
+<div class="note"><b>화면에서 상태 확인</b><span>상태 표시줄에 <b>도면: A동 2층 · v5 기반 (수정됨)</b>처럼 표시됩니다. “v5 기반”은 지금 작업본이 v5에서 출발했다는 뜻이고, “(수정됨)”은 그 뒤 바뀌었다는 뜻입니다. 이 글자를 누르면 버전 관리자가 열립니다.</span></div>
+<h3>19.1 버전 저장</h3>
+<ol class="steps"><li>편집 중이면 먼저 <b>저장</b>합니다(버전은 서버에 저장된 도면을 담습니다).</li><li>툴바 <span class="chip" style="background:#E0F2F1;border-color:#00796B">버전</span> 또는 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>.</li><li>이름(예: “1차 검토안”)과 설명을 적고 <b>Save version</b>.</li></ol>
+<ul><li>마지막 버전과 내용이 같으면 새 버전을 만들지 않고 알려 줍니다.</li><li><b>자동 버전</b>: 편집을 저장할 때마다 “자동 저장 날짜시각” 버전이 남습니다(내용이 같으면 건너뜀). 설정 → General에서 끌 수 있고, 버전 관리자에서 “Show automatic versions”로 숨길 수 있습니다.</li></ul>
+<div class="shot"><div class="shotbox">[ 화면 캡처 9 자리 ]<br><small>버전 저장 창</small></div></div>
+<h3>19.2 버전 관리자</h3>
+<p>툴바 <span class="chip" style="background:#E0F2F1;border-color:#00796B">이력</span> 또는 Version 메뉴 → Version manager…</p>
+<div class="shot"><div class="shotbox">[ 화면 캡처 10 자리 ]<br><small>버전 관리자 (목록·비교 결과)</small></div></div>
+<table><thead><tr><th style="width:190px">버튼</th><th>동작</th></tr></thead><tbody><tr><td>Save new version…</td><td>새 버전 저장</td></tr><tr><td>Compare</td><td>버전 1개 선택 → 작업본과 비교, 2개 선택(<kbd>Ctrl</kbd>+클릭) → 두 버전 비교(오래된 것 → 새 것). 목록을 더블클릭해도 됩니다.</td></tr><tr><td>Restore</td><td>선택한 버전을 작업본으로 되살림. 지금 도면이 가장 최신 버전과 다르면 먼저 “복원 전 자동 저장” 버전으로 남기므로 복원도 되돌릴 수 있습니다. <b>편집 모드에서는 쓸 수 없습니다.</b> 다른 사용자에게 변경 알림이 갑니다.</td></tr><tr><td>Branch to new drawing…</td><td>선택한 버전을 복사해 새 도면을 만듭니다(B안).</td></tr><tr><td>Set / release baseline</td><td>확정 지정·해제. 새로 확정하면 이전 확정 버전은 released로 내려갑니다.</td></tr><tr><td>Archive / unarchive</td><td>보관(목록에서 구분용)</td></tr><tr><td>Rename…</td><td>이름·설명 수정(확정 버전은 불가)</td></tr><tr><td>Delete</td><td>버전 삭제. 확정 버전은 먼저 해제해야 합니다. 이 버전에서 만든 다음 버전은 이전 버전에 이어 붙습니다. <b>되돌릴 수 없습니다.</b></td></tr><tr><td>Export as DXF…</td><td>선택한 버전의 장비를 DXF 블록으로 내보냅니다(12장과 같은 형식).</td></tr></tbody></table>
+<p>목록의 <b>Kind</b>는 manual(직접 저장), auto(편집 저장 후 자동), pre-restore(복원 직전 자동 보관)이고, <b>Status</b>는 draft / released / BASELINE / archived, <b>From</b>은 어느 버전에서 이어진 것인지입니다.</p>
+<h3>19.3 버전 비교</h3>
+<p>비교 결과는 <b>목록</b>과 <b>2D 뷰의 색</b> 두 가지로 봅니다. 같은 설비는 고유 번호로 맞추기 때문에 옮기기만 한 설비가 “삭제+추가”로 보이지 않습니다.</p>
+<table><thead><tr><th style="width:110px">분류</th><th>의미</th><th style="width:120px">2D 뷰 색</th></tr></thead><tbody><tr><td>added</td><td>새로 생긴 객체</td><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">초록</span></td></tr><tr><td>removed</td><td>사라진 객체 (이전 위치에 점선)</td><td><span class="chip" style="background:#FFEBEE;border-color:#C62828">빨강</span></td></tr><tr><td>moved</td><td>위치가 바뀜 (이전 위치 회색 점선 + 이동 화살표)</td><td><span class="chip" style="background:#FFF3E0;border-color:#EF6C00">주황</span></td></tr><tr><td>rotated</td><td>회전각이 바뀜</td><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">보라</span></td></tr><tr><td>replaced</td><td>다른 장비 모델/배율로 바뀜</td><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">파랑</span></td></tr><tr><td>attributes</td><td>레이어나 속성 값이 바뀜</td><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">청록</span></td></tr></tbody></table>
+<ul><li>비교 창의 <b>Show in 2D view</b>를 누르면 창이 닫히고 2D 뷰에 색이 표시됩니다. 왼쪽 위 범례에 분류별 개수가 나옵니다.</li><li>해제: <kbd>Esc</kbd>, 툴바 <span class="chip" style="background:#E0F2F1;border-color:#00796B">비교</span> 다시 누르기, Version → Clear comparison. 편집 모드에 들어가거나 레이어를 다시 불러오면 자동 해제됩니다.</li><li><b>Export CSV…</b>로 변경 목록을 엑셀용 파일로 저장할 수 있습니다.</li></ul>
+<div class="shot"><div class="shotbox">[ 화면 캡처 11 자리 ]<br><small>2D 뷰의 비교 표시와 범례</small></div></div>
+<h3>19.4 도면 관리 (A/B안 동시 작업)</h3>
+<p>툴바 <span class="chip" style="background:#E0F2F1;border-color:#00796B">도면</span> 또는 Version → Drawings…</p>
+<ul><li><b>Open</b>(더블클릭): 다른 도면을 엽니다. 그 도면의 작업본이 화면에 나옵니다. (편집 모드에서는 먼저 저장하거나 취소하세요.)</li><li><b>New empty drawing…</b>: 비어 있는 새 도면. DXF를 입력해 채울 수 있습니다.</li><li><b>Rename… / Delete…</b>: 이름 변경, 삭제(그 도면의 작업본과 <b>모든 버전</b>이 함께 삭제되며 되돌릴 수 없음). 지금 열려 있는 도면과 마지막 도면은 삭제할 수 없습니다.</li></ul>
+<div class="tip"><b>B안 만들기</b><span>버전 관리자에서 기준이 될 버전을 고르고 <b>Branch to new drawing…</b> → 이름 입력 → “지금 열까요?”에 예. 이제 A안(원래 도면)과 B안(새 도면)이 서로 영향 없이 따로 편집됩니다. 두 안을 비교하려면 B안의 작업본을 버전으로 저장한 뒤 같은 기준 버전과 각각 비교하세요.</span></div>
+<div class="note"><b>다른 사용자와의 관계</b><span>변경 알림(“서버 데이터가 변경되었습니다”)은 같은 도면을 열고 있는 사용자에게만 갑니다. 다른 도면에서 작업하는 사람과는 서로 영향이 없습니다.</span></div>
+<h3>19.5 처음 접속할 때</h3>
+<div class="warn"><b>데이터베이스 업그레이드</b><span>이 기능이 들어간 버전으로 처음 로그인하면 서버 데이터베이스가 자동으로 업그레이드됩니다(도면·고유 번호 컬럼과 버전 테이블 추가, 기존 데이터는 “기본 도면”으로 이관). 사용자 화면에는 변화가 없지만, 운영 중인 서버라면 <b>미리 백업</b>해 두세요. 이 버전을 쓰는 모든 사용자가 같은 서버를 쓰면 문제가 없고, 업그레이드 전 버전의 프로그램은 업그레이드된 서버에서 정상 동작을 보장하지 않으므로 함께 교체하세요.</span></div>
+<h2 id="s20">20. 화면 캡처와 도움말</h2>
+<h3>20.1 화면 캡처 (클립보드 복사)</h3>
+<p>툴바 <span class="chip" style="background:#ECEFF1;border-color:#455A64">캡처</span>, Tools → Copy screen to clipboard, 또는 <kbd>Ctrl</kbd>+<kbd>P</kbd>(<kbd>Shift</kbd>를 같이 눌러도 됩니다)를 누르면 프로그램 영역이 이미지로 클립보드에 복사됩니다. 메일·문서·메신저에 <kbd>Ctrl</kbd>+<kbd>V</kbd>로 붙여 넣으세요.</p>
+<ul><li><b>다이얼로그가 떠 있어도</b> 동작합니다. 메인 창과 열려 있는 다이얼로그·메시지 상자·열린 메뉴가 화면에 보이는 모습 그대로 한 장에 들어갑니다.</li><li>복사에 성공하면 상태 표시줄에 크기와 창 개수가 표시됩니다.</li><li>이미지가 검게 나오는 환경(일부 원격 접속·가상 화면)에서는 자동으로 다른 방식으로 다시 시도합니다. 마지막 방식에서는 다이얼로그 제목 표시줄이 빠질 수 있습니다.</li><li>단축키는 설정 → Shortcuts에서 바꿀 수 있습니다.</li></ul>
+<h3>20.2 사용자 매뉴얼 보기</h3>
+<p><kbd>F1</kbd> 또는 Help → User manual (PDF)를 누르면 이 매뉴얼의 PDF 판이 컴퓨터의 기본 PDF 뷰어로 열립니다. 파일은 프로그램 폴더의 <code>Manual\UserManual.pdf</code>이며, 없으면 경고가 표시됩니다.</p>
+<h3>20.3 프로그램 파일 이름</h3>
+<p>실행 파일 이름은 <code>OmniDT-SE.exe</code>입니다.</p>
+<h2 id="s16">16. 툴바 버튼 전체 표</h2>
+<p>툴바는 7개 그룹이며 버튼마다 아이콘 아래에 한글 2자 이름표가 있습니다.</p>
+<div class="strip">
+<div class="sgroup">
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>서버</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>입력</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>장비</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>중단</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>제거</span>
+<span class="btnmock" style="background:#E3F2FD;border-color:#1565C0"><i style="background:#1565C0"></i>출력</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>확대</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>축소</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>전체</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>선택</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>초기</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#FFF3E0;border-color:#EF6C00"><i style="background:#EF6C00"></i>모두</span>
+<span class="btnmock" style="background:#FFF3E0;border-color:#EF6C00"><i style="background:#EF6C00"></i>해제</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>편집</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>저장</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>취소</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>이전</span>
+<span class="btnmock" style="background:#E8F5E9;border-color:#2E7D32"><i style="background:#2E7D32"></i>다시</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>복제</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>삭제</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>그룹</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>시계</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>반시</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>정점</span>
+<span class="btnmock" style="background:#F3E5F5;border-color:#6A1B9A"><i style="background:#6A1B9A"></i>격자</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>버전</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>이력</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>비교</span>
+<span class="btnmock" style="background:#E0F2F1;border-color:#00796B"><i style="background:#00796B"></i>도면</span>
+</div>
+<div class="sgroup">
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>블록</span>
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>등록</span>
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>캡처</span>
+<span class="btnmock" style="background:#ECEFF1;border-color:#455A64"><i style="background:#455A64"></i>설정</span>
+</div>
+</div>
+<h4><span class="dot" style="background:#1565C0"></span>서버 · DXF</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">서버</span></td><td>서버 연결 창을 연다. 접속 시험 후 연결 정보가 저장된다.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">입력</span></td><td>DXF 파일을 읽어 DB에 저장한다(Import). 서버 연결·권한이 있어야 활성.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">장비</span></td><td>켜면 Import할 때 Equipment 블록만 가져온다(토글).</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">중단</span></td><td>진행 중인 Import를 취소한다(저장은 롤백).</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">제거</span></td><td>Import한 DXF 데이터를 모두 삭제한다. 되돌릴 수 없다.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E3F2FD;border-color:#1565C0">출력</span></td><td>장비를 DXF 블록(이름·회전·위치 속성 포함)으로 내보낸다.</td><td><span class="muted">-</span></td></tr>
+</tbody></table>
+<h4><span class="dot" style="background:#00796B"></span>보기</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">확대</span></td><td>화면을 확대한다(마우스 휠도 가능).</td><td><kbd>휠 위</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">축소</span></td><td>화면을 축소한다.</td><td><kbd>휠 아래</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">전체</span></td><td>불러온 데이터 전체가 보이게 맞춘다.</td><td><kbd>F</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">선택</span></td><td>선택한 객체가 화면에 꽉 차게 확대한다.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">초기</span></td><td>보기를 처음 상태로 되돌린다.</td><td><span class="muted">-</span></td></tr>
+</tbody></table>
+<h4><span class="dot" style="background:#EF6C00"></span>선택</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#FFF3E0;border-color:#EF6C00">모두</span></td><td>편집 중인 모든 객체를 선택한다(편집 모드).</td><td><kbd>Ctrl+A</kbd></td></tr>
+<tr><td><span class="chip" style="background:#FFF3E0;border-color:#EF6C00">해제</span></td><td>선택을 모두 푼다.</td><td><span class="muted">-</span></td></tr>
+</tbody></table>
+<h4><span class="dot" style="background:#2E7D32"></span>편집 모드 · 이력</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">편집</span></td><td>편집 모드를 켜고 끈다(모든 보이는 레이어가 편집 대상).</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">저장</span></td><td>편집한 내용을 서버에 저장한다.</td><td><kbd>Ctrl+S</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">취소</span></td><td>저장하지 않은 편집을 버리고 편집 모드를 끝낸다.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">이전</span></td><td>Undo. 직전 편집 하나를 되돌린다.</td><td><kbd>Ctrl+Z</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E8F5E9;border-color:#2E7D32">다시</span></td><td>Redo. 되돌린 편집을 다시 적용한다.</td><td><kbd>Ctrl+R</kbd></td></tr>
+</tbody></table>
+<h4><span class="dot" style="background:#6A1B9A"></span>객체 편집</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">복제</span></td><td>선택 객체를 복사한다. 복사본이 새 선택이 되어 바로 끌어 옮길 수 있다.</td><td><kbd>Ctrl+D</kbd></td></tr>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">삭제</span></td><td>선택 객체를 삭제 표시한다(저장하면 반영).</td><td><kbd>Del</kbd></td></tr>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">그룹</span></td><td>선택한 여러 객체를 하나의 블록으로 묶는다.</td><td><kbd>Ctrl+G</kbd></td></tr>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">시계</span></td><td>선택 객체를 시계 방향 90° 회전한다.</td><td><kbd>r</kbd></td></tr>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">반시</span></td><td>선택 객체를 반시계 방향 90° 회전한다.</td><td><kbd>Shift+R</kbd></td></tr>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">정점</span></td><td>면 객체의 꼭짓점을 편집한다(블록 객체는 불가).</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#F3E5F5;border-color:#6A1B9A">격자</span></td><td>켜면 이동·복제가 10 단위 격자에 맞춰진다(토글).</td><td><span class="muted">-</span></td></tr>
+</tbody></table>
+<h4><span class="dot" style="background:#00796B"></span>도면 · 버전</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">버전</span></td><td>지금 도면을 이름을 붙여 새 버전으로 저장한다.</td><td><kbd>Ctrl+Shift+S</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">이력</span></td><td>버전 관리자 창을 연다(목록·비교·복원·분기·확정).</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">비교</span></td><td>버전 비교를 연다. 2D 뷰에 비교가 표시된 상태에서 누르면 표시를 해제한다.</td><td><kbd>Esc</kbd></td></tr>
+<tr><td><span class="chip" style="background:#E0F2F1;border-color:#00796B">도면</span></td><td>도면 관리 창을 연다(열기·새로 만들기·이름 변경·삭제).</td><td><span class="muted">-</span></td></tr>
+</tbody></table>
+<h4><span class="dot" style="background:#455A64"></span>라이브러리 · 설정</h4>
+<table class="tb"><thead><tr><th style="width:84px">이름표</th><th>기능</th><th style="width:100px">단축키</th></tr></thead><tbody>
+<tr><td><span class="chip" style="background:#ECEFF1;border-color:#455A64">블록</span></td><td>블록 라이브러리 창을 연다.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#ECEFF1;border-color:#455A64">등록</span></td><td>선택한 블록을 라이브러리에 등록한다.</td><td><span class="muted">-</span></td></tr>
+<tr><td><span class="chip" style="background:#ECEFF1;border-color:#455A64">캡처</span></td><td>프로그램 영역(메인 창과 열려 있는 다이얼로그)을 이미지로 클립보드에 복사한다.</td><td><kbd>Ctrl+P</kbd></td></tr>
+<tr><td><span class="chip" style="background:#ECEFF1;border-color:#455A64">설정</span></td><td>설정 창(로그인·단축키·일반)을 연다.</td><td><kbd>Ctrl+,</kbd></td></tr>
+</tbody></table>
+<div class="note"><b>툴바에 없는 기능</b><span>레이어 불러오기·새로고침·삭제·표시/숨김은 레이어 패널 헤더 버튼과 Layer 메뉴에 있습니다. 형상 검증(Validate), 점 추가(Add point)는 Tools 메뉴에 있습니다.</span></div>
+<h2 id="s17">17. 단축키 일람</h2>
+<p>아래는 기본값입니다. 설정 → Shortcuts에서 바꾸면 달라질 수 있습니다.</p>
+<table><thead><tr><th style="width:230px">키</th><th>기능</th><th style="width:130px">사용 조건</th></tr></thead><tbody><tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>저장</td><td>편집 모드</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></td><td>버전 저장</td><td>연결·편집 권한</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>Undo</td><td>편집 모드</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>R</kbd></td><td>Redo</td><td>편집 모드</td></tr><tr><td><kbd>Esc</kbd></td><td>편집 취소 (고정)</td><td>편집 모드</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>전체 선택</td><td>편집 모드</td></tr><tr><td><kbd>Shift</kbd>+클릭 / <kbd>Ctrl</kbd>+클릭</td><td>선택 추가·해제</td><td>편집 모드</td></tr><tr><td><kbd>Ctrl</kbd>+방향키 (<kbd>Shift</kbd> 추가 시 10배)</td><td>선택 객체 이동 (고정)</td><td>편집 모드, 선택 있음</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>D</kbd></td><td>복제</td><td>편집 모드, 선택 있음</td></tr><tr><td><kbd>Del</kbd></td><td>삭제</td><td>편집 모드, 선택 있음</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>G</kbd></td><td>그룹</td><td>2개 이상 선택</td></tr><tr><td><kbd>r</kbd> / <kbd>Shift</kbd>+<kbd>R</kbd></td><td>시계 / 반시계 90° 회전</td><td>편집 모드, 선택 있음</td></tr><tr><td><kbd>F</kbd></td><td>전체 보기</td><td>-</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>,</kbd></td><td>설정 창</td><td>-</td></tr><tr><td><kbd>F1</kbd></td><td>사용자 매뉴얼(PDF) 열기 (Help → User manual)</td><td>-</td></tr><tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd> (<kbd>Shift</kbd> 포함 가능)</td><td>화면 캡처: 프로그램 영역을 클립보드에 복사 (다이얼로그가 떠 있어도 동작)</td><td>-</td></tr><tr><td>마우스 휠</td><td>확대·축소</td><td>-</td></tr><tr><td>마우스 가운데 버튼 드래그</td><td>화면 이동</td><td>-</td></tr></tbody></table>
+<h2 id="s18">18. 문제 해결</h2>
+<table><thead><tr><th style="width:260px">증상 / 메시지</th><th>원인과 해결</th></tr></thead><tbody><tr><td>툴바 버튼이 흐리다</td><td>서버에 연결되지 않았거나, 권한이 없거나, 편집 모드가 아닙니다(Undo·회전·전체 선택 등). 선택한 객체가 없어도 흐립니다.</td></tr><tr><td>“Connect to the server and log in first.”</td><td>서버 연결과 로그인이 먼저 필요합니다(2장).</td></tr><tr><td>“Exit edit mode before reloading layers.”</td><td>편집 중에는 불러오기·새로고침·레이어 삭제·이름 변경을 할 수 없습니다. 저장하거나 취소하세요.</td></tr><tr><td>“장비영역 겹침”</td><td>장비 외곽이 다른 장비와 겹칩니다. 이동·회전·복제는 취소되고 저장도 거부됩니다. 겹치지 않게 옮기세요.</td></tr><tr><td>저장 후 “N개 객체가 그 사이 다른 사람에 의해 변경되어 덮어쓰지 않았습니다”</td><td>충돌입니다. 새로고침으로 최신 상태를 받아 다시 작업하세요.</td></tr><tr><td>같은 이름의 레이어 오류 (이름 변경)</td><td>이미 있는 이름입니다. 다른 이름을 쓰세요.</td></tr><tr><td>로그인이 잠김</td><td>5회 연속 실패 시 15분 잠깁니다. 관리자에게 잠금 해제를 요청하세요.</td></tr><tr><td>단축키가 안 먹는다</td><td>텍스트 입력란에 커서가 있으면 동작하지 않습니다. 지도를 한 번 누른 뒤 다시 시도하세요. 설정 → Shortcuts에서 충돌 여부도 확인하세요.</td></tr><tr><td>DXF를 입력했는데 다른 파일이다</td><td>현재는 <code>data\SmartLayout.dxf</code>로 고정되어 있습니다.</td></tr><tr><td>실수로 레이어를 삭제했다</td><td>복구 기능이 없습니다. DXF를 다시 입력하거나 관리자에게 서버 백업 복원을 요청하세요.</td></tr></tbody></table>
+<h3>자료 위치</h3>
+<ul><li>연결·설정 파일: <code>%LOCALAPPDATA%\SpatialEditor\</code> (<code>postgres-connection.json</code>, <code>app-settings.json</code>)</li><li>Import 기록: <code>%LOCALAPPDATA%\SpatialEditor\logs\import-날짜.log</code></li></ul>
+<footer>OmniDT SE 사용자 매뉴얼 · 기준일 2026-10-11 · 개발 내용은 DEVELOPMENT_DOCUMENT.md, 데이터베이스 구조는 DATABASE_SCHEMA.md 참고</footer>
+</main>
+</div>
+</body>
+</html>
