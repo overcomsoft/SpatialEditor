@@ -1,3 +1,43 @@
+// ============================================================================
+// PostGisFeatureRepository 전체 흐름도
+//
+//   [스키마 보장] EnsureSchemaAsync
+//        PostGIS 확장 → spatial_features / spatial_block_instances / layouts(기본 도면 id=1) / block_definitions
+//        → layout_id·object_uid 컬럼과 유일 인덱스 → GIST/GIN 인덱스
+//        → SyncBlockDefinitionsAsync(변환 컬럼 채움, 블록 정의 생성, 인스턴스-정의 연결)
+//        → LibraryRepository.EnsureSchemaAsync → ChangeFeedRepository.EnsureSchemaAsync
+//
+//   [가져오기] ImportAsync (단일 트랜잭션)
+//        레이어 행 INSERT(건별) → 블록 인스턴스 다중 행 INSERT(500건 배치)
+//        → SyncBlockDefinitionsAsync → LibraryRepository.EnsureSchemaAsync
+//        → ChangeFeedRepository.RecordAsync(INSERT 기록 + NOTIFY) → 커밋(예외/취소 시 전체 롤백)
+//
+//   [조회] FindByBoundsAsync / FindImported*Async / FindImportedLayersAsync / FindImportedCountsAsync /
+//          FindEditableLayerObjectsAsync / FindEditableBlockInstancesAsync / LayerExistsAsync / HasImportedFileAsync
+//          (모두 현재 layout_id 범위로 제한, 자동 커밋 읽기)
+//
+//   [편집 저장] ApplyLayerEditsAsync (단일 트랜잭션)
+//        UPDATE(updated_at 일치할 때만; 불일치=충돌 ID 수집) → INSERT → DELETE(updated_at 일치할 때만)
+//        → SyncBlockDefinitionsAsync → LibraryRepository.EnsureSchemaAsync
+//        → ChangeFeedRepository.RecordAsync(NOTIFY) → 커밋 → 충돌 ID 목록 반환
+//
+//   [삭제/이름 변경] DeleteImportedFileAsync(파일 단위) / DeleteLayerAsync / RenameLayerAsync(레이어 단위)
+//        → 필요 시 미사용 block_definitions 정리 → 변경 피드 기록
+//
+// 사용 테이블: spatial_features, spatial_block_instances, block_definitions, layouts
+//   (+ SyncBlockDefinitionsAsync는 VersionRepository에서도 재사용, change_log는 ChangeFeedRepository 경유).
+//   좌표계는 모두 SRID 5186(미터). 객체는 영구 식별자 object_uid를 가지며 (layout_id, object_uid)가 유일.
+// 외부 의존: Npgsql + NetTopologySuite(지오메트리 매핑), LibraryRepository, ChangeFeedRepository, Domain 모델.
+// 트랜잭션·락 정책:
+//   - 쓰기 작업(Import/ApplyLayerEdits/DeleteLayer/RenameLayer)은 단일 트랜잭션(기본 READ COMMITTED).
+//   - 동시 편집은 낙관적 동시성: updated_at이 읽을 때 값과 같을 때만 UPDATE/DELETE. 0행이면 충돌로 보고하고
+//     다른 세션의 변경을 덮어쓰지 않는다(충돌이 아닌 나머지 변경은 그대로 커밋).
+//   - 변경 기록(change_log)과 NOTIFY는 데이터 변경과 같은 트랜잭션에서 수행해 롤백 시 알려지지 않음.
+//   - 모든 작업 쿼리는 이 저장소의 layout_id(도면)로 제한된다(@@L@@ 자리표시자 치환 또는 보간).
+//   - 명시적 advisory lock은 사용하지 않는다(버전 번호 채번 락은 VersionRepository에 있음).
+//   - DeleteImportedFileAsync는 데이터 삭제 3건을 트랜잭션 없이(자동 커밋) 실행한 뒤 변경 기록만 별도
+//     트랜잭션으로 남긴다는 점에 유의(코드 그대로의 동작).
+// ============================================================================
 using System.Text;
 using NetTopologySuite.Geometries;
 using Npgsql;
@@ -6,28 +46,45 @@ using SpatialEditor.Domain;
 
 namespace SpatialEditor.Infrastructure;
 
+/// <summary>
+/// PostGIS(PostgreSQL)에 DXF 가져오기 결과와 편집 내용을 저장/조회하는 저장소.
+/// 한 인스턴스는 하나의 도면(layout_id)에만 연결되어 해당 도면의 작업본만 읽고 쓴다.
+/// 모든 지오메트리는 SRID 5186(미터 단위)이다.
+/// </summary>
 public sealed class PostGisFeatureRepository : IAsyncDisposable
 {
+    /// <summary>쿼리 실행용 데이터 소스(NetTopologySuite 매핑 포함, 연결 풀).</summary>
     private readonly NpgsqlDataSource dataSource;
+    /// <summary>이 저장소가 다루는 도면(layout) ID. 모든 작업본 쿼리를 이 값으로 제한한다.</summary>
     private readonly long layoutId;
 
     /// <summary>
     /// <paramref name="layoutId"/> selects which drawing (layout) this repository reads and writes; every
     /// query on the working copy is limited to it. Layout 1 is the default drawing.
     /// </summary>
+    /// <param name="connectionString">PostgreSQL 연결 문자열(null 불가).</param>
+    /// <param name="layoutId">대상 도면 ID. 기본 1(기본 도면).</param>
     public PostGisFeatureRepository(string connectionString, long layoutId = 1)
     {
         this.layoutId = layoutId;
         var builder = new NpgsqlDataSourceBuilder(connectionString);
+        // 지오메트리 컬럼을 NetTopologySuite Geometry로 읽고 쓰기 위한 플러그인 활성화
         builder.UseNetTopologySuite();
         dataSource = builder.Build();
     }
 
+    /// <summary>이 저장소가 연결된 도면 ID.</summary>
     public long LayoutId => layoutId;
 
     /// <summary>Fills the <c>@@L@@</c> placeholder with this repository's layout id.</summary>
+    /// <param name="sql">자리표시자 @@L@@를 포함한 SQL 문자열.</param>
+    /// <returns>@@L@@가 layout_id 숫자(문화권 무관)로 치환된 SQL. 숫자(long)만 삽입되므로 SQL 주입 위험은 없다.</returns>
     private string Q(string sql) => sql.Replace("@@L@@", layoutId.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
+    /// <summary>DB 연결과 PostGIS 설치 여부를 확인한다.</summary>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>"Connected: database=..., user=..., PostGIS=..." 형식의 상태 문자열.</returns>
+    /// <exception cref="InvalidOperationException">서버가 정보를 반환하지 않았을 때.</exception>
     public async Task<string> TestConnectionAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
@@ -43,6 +100,13 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return $"Connected: database={reader.GetString(0)}, user={reader.GetString(1)}, PostGIS={reader.GetString(2)}";
     }
 
+    /// <summary>
+    /// 필요한 테이블/컬럼/인덱스를 모두 보장한다(IF NOT EXISTS로 반복 실행 안전, 구버전 DB도 ALTER로 승급).
+    /// 지오메트리는 SRID 5186(미터). layouts에 기본 도면(id=1)을 만들고, 기존 행에는 layout_id=1과
+    /// 무작위 object_uid가 채워진다. 마지막에 블록 정의 동기화 및 라이브러리/변경 피드 스키마를 보장한다.
+    /// 스키마 SQL은 트랜잭션 없이 한 번의 명령으로 실행된다.
+    /// </summary>
+    /// <param name="cancellationToken">취소 토큰.</param>
     public async Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -133,6 +197,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         }
 
         // Backfills definitions/transform columns for instances imported before they existed.
+        // (정의/변환 컬럼이 생기기 전에 가져온 인스턴스를 채워 넣는다. 이어서 라이브러리·변경 피드 스키마도 보장)
         await SyncBlockDefinitionsAsync(connection, null, cancellationToken);
         await LibraryRepository.EnsureSchemaAsync(connection, null, cancellationToken);
         await ChangeFeedRepository.EnsureSchemaAsync(connection, null, cancellationToken);
@@ -142,6 +207,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// Parses a numeric attribute out of the instance's JSONB, yielding NULL for missing or
     /// malformed values so one bad row can never abort the whole sync.
     /// </summary>
+    /// <param name="key">JSONB attributes에서 읽을 키 이름(코드 상수만 전달; SQL에 직접 삽입되므로 외부 입력 금지).</param>
+    /// <returns>숫자 형식이면 double precision으로 변환하고, 아니면 NULL이 되는 SQL CASE 식.</returns>
     private static string NumericAttribute(string key) =>
         $"CASE WHEN attributes->>'{key}' ~ '^[-+]?([0-9]+\\.?[0-9]*|\\.[0-9]+)([eE][-+]?[0-9]+)?$' THEN (attributes->>'{key}')::double precision END";
 
@@ -153,9 +220,20 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// transform applied to its world geometry, preferring an instance that was never edited —
     /// and (3) links every instance to its definition. Idempotent; scoped to rows that changed.
     /// </summary>
+    /// <remarks>
+    /// 특정 도면에 한정되지 않고 모든 도면(layout)의 인스턴스를 대상으로 하며, 이미 일치하는 행은 건드리지 않는다.
+    /// 로컬 좌표 변환은 월드 지오메트리에서 삽입점 평행이동의 역변환과 회전·배율의 역변환(ST_Affine)을 적용한다.
+    /// 회전은 도(degree) 단위 컬럼이며 배율 0인 행은 정의 생성에서 제외된다.
+    /// </remarks>
+    /// <param name="connection">열린 연결.</param>
+    /// <param name="transaction">참여할 트랜잭션. null이면 자동 커밋.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
     internal static async Task SyncBlockDefinitionsAsync(
         NpgsqlConnection connection, NpgsqlTransaction? transaction, CancellationToken cancellationToken)
     {
+        // 1) attributes의 배치 속성(삽입 좌표/회전/배율)을 실제 컬럼으로 복사(값이 달라진 행만 UPDATE)
+        // 2) (source_file, block_name)별로 정의 1건 생성: 수정된 적 없는(updated_at = created_at) 인스턴스를 우선 사용
+        // 3) 정의가 없는 인스턴스를 같은 (source_file, block_name)의 정의에 연결
         var sql = $"""
             UPDATE spatial_block_instances SET
                 insert_x = {NumericAttribute("block_insert_x")},
@@ -196,6 +274,11 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>지정한 사각형 범위와 겹치는(bbox 교차, <c>&amp;&amp;</c>) 피처를 id 순으로 조회한다.</summary>
+    /// <param name="bounds">조회 범위(좌표 단위는 srid 좌표계의 단위; 5186이면 미터).</param>
+    /// <param name="srid">범위 좌표의 SRID. 기본 5186. 저장된 지오메트리의 SRID와 같아야 한다.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>피처 목록(속성이 NULL이면 빈 사전).</returns>
     public async Task<IReadOnlyList<SpatialFeature>> FindByBoundsAsync(
         Envelope bounds,
         int srid = 5186,
@@ -229,6 +312,12 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return features;
     }
 
+    /// <summary>
+    /// 가져온 피처(cad_block, dxf_layer)의 외곽 지오메트리(outer_geom)를 ST_Dump로 단일 도형으로 분해해 조회한다.
+    /// </summary>
+    /// <param name="layerNames">대상 레이어명 목록. null 또는 비어 있으면 전체 레이어. 레이어가 없는 행은 "(no layer)"로 비교한다.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>id 순 피처 목록(LayerName 포함, 속성 NULL이면 빈 사전).</returns>
     public async Task<IReadOnlyList<SpatialFeature>> FindImportedOuterPolygonsAsync(
         IReadOnlyCollection<string>? layerNames = null,
         CancellationToken cancellationToken = default)
@@ -272,6 +361,9 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return features;
     }
 
+    /// <summary>블록 인스턴스의 외곽 지오메트리(outer_geom)를 ST_Dump로 분해하여 'block_instance' 종류 피처로 조회한다(레이어 필터 없음).</summary>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>(id, 경로) 순 피처 목록.</returns>
     public async Task<IReadOnlyList<SpatialFeature>> FindImportedBlockInstanceOutersAsync(
         CancellationToken cancellationToken = default)
     {
@@ -303,6 +395,10 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return features;
     }
 
+    /// <summary>블록 인스턴스의 실제 도형(geom)을 ST_Dump로 분해하여 'block_instance' 종류 피처로 조회한다.</summary>
+    /// <param name="layerNames">대상 레이어명 목록. null 또는 비어 있으면 전체. 레이어 없는 행은 "(no layer)"로 비교.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>(id, 경로) 순 피처 목록.</returns>
     public async Task<IReadOnlyList<SpatialFeature>> FindImportedBlockInstanceGeometriesAsync(
         IReadOnlyCollection<string>? layerNames = null,
         CancellationToken cancellationToken = default)
@@ -345,6 +441,11 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return features;
     }
 
+    /// <summary>
+    /// 가져온 레이어 목록과 레이어별 도형 종류(Point/Line/Polygon, 블록만 있으면 "Block"), 도형 수, 블록 인스턴스 수를 집계한다.
+    /// </summary>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>레이어명 순 목록. 레이어가 없는 객체는 "(no layer)" 이름으로 묶인다.</returns>
     public async Task<IReadOnlyList<LayerInfo>> FindImportedLayersAsync(
         CancellationToken cancellationToken = default)
     {
@@ -405,9 +506,20 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return layers;
     }
 
+    /// <summary>
+    /// 특정 원본 파일(source_file)에서 가져온 모든 데이터(피처, 블록 인스턴스, 더 이상 쓰이지 않는 블록 정의)를 삭제하고
+    /// 영향을 받은 레이어를 변경 피드에 기록한다.
+    /// </summary>
+    /// <remarks>
+    /// 주의: 데이터 삭제 3건은 명시적 트랜잭션 없이 각각 자동 커밋으로 실행되고, 변경 기록만 마지막에 별도 트랜잭션으로 남긴다.
+    /// </remarks>
+    /// <param name="sourceFile">삭제할 원본 파일 이름/경로(가져올 때 저장한 source_file 값과 동일해야 함).</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <param name="changeContext">변경자 정보(변경 피드용, null 가능).</param>
     public async Task DeleteImportedFileAsync(
         string sourceFile, CancellationToken cancellationToken = default, ChangeContext? changeContext = null)
     {
+        // 1) 행이 사라지기 전에 영향을 받을 레이어 이름을 먼저 읽어 둔다(변경 피드 기록용)
         // The layers have to be read before their rows are gone.
         var affectedLayers = new List<string>();
         await using (var layerConnection = await dataSource.OpenConnectionAsync(cancellationToken))
@@ -425,6 +537,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             }
         }
 
+        // 2) 이 도면의 해당 파일 피처를 삭제한 뒤 블록 인스턴스 삭제
         const string sql = """
             DELETE FROM spatial_features
             WHERE source_file = $1 AND layout_id = @@L@@
@@ -441,12 +554,14 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         instanceCommand.Parameters.AddWithValue(sourceFile);
         await instanceCommand.ExecuteNonQueryAsync(cancellationToken);
 
+        // 3) 인스턴스가 정의를 참조하므로 정의는 마지막에 삭제(다른 인스턴스가 아직 쓰는 정의는 남김)
         // Instances reference their definitions, so definitions go last.
         await using var definitionCommand = new NpgsqlCommand(
             "DELETE FROM block_definitions d WHERE d.source_file = $1 AND NOT EXISTS (SELECT 1 FROM spatial_block_instances i WHERE i.definition_id = d.id);", connection);
         definitionCommand.Parameters.AddWithValue(sourceFile);
         await definitionCommand.ExecuteNonQueryAsync(cancellationToken);
 
+        // 4) 레이어 전체 삭제로 변경 피드에 기록 + NOTIFY(다른 세션이 새로 고침)
         await using var changeTransaction = await connection.BeginTransactionAsync(cancellationToken);
         await ChangeFeedRepository.RecordAsync(
             connection, changeTransaction, changeContext,
@@ -461,12 +576,17 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// whole-layer delete so other sessions refresh. <c>"(no layer)"</c> addresses rows without a layer.
     /// Returns the number of rows removed.
     /// </summary>
+    /// <param name="layerName">삭제할 레이어 이름(대소문자 구분 비교). 레이어 없는 행은 "(no layer)".</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <param name="changeContext">변경자 정보(변경 피드용, null 가능).</param>
+    /// <returns>삭제된 행 수(피처 + 블록 인스턴스). 0이면 변경 기록도 남기지 않는다.</returns>
     public async Task<int> DeleteLayerAsync(
         string layerName, CancellationToken cancellationToken = default, ChangeContext? changeContext = null)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // 1) 두 테이블에서 이 도면의 해당 레이어 행 삭제(테이블명은 코드 상수, 값은 파라미터)
         var removed = 0;
         foreach (var table in new[] { "spatial_features", "spatial_block_instances" })
         {
@@ -476,6 +596,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             removed += await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // 2) 어떤 인스턴스도 쓰지 않는 블록 정의 정리
         await using (var definitions = new NpgsqlCommand("""
             DELETE FROM block_definitions d
             WHERE NOT EXISTS (SELECT 1 FROM spatial_block_instances i WHERE i.definition_id = d.id);
@@ -484,6 +605,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             await definitions.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // 3) 실제로 지운 것이 있을 때만 레이어 전체 삭제를 기록하고 같은 트랜잭션에서 커밋
         if (removed > 0)
         {
             await ChangeFeedRepository.RecordAsync(
@@ -497,6 +619,9 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     }
 
     /// <summary>True when any feature or block instance already uses this layer name (case-insensitive).</summary>
+    /// <param name="layerName">확인할 레이어 이름(대소문자 무시). "(no layer)"는 레이어 없는 행을 뜻한다.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>이 도면에서 사용 중이면 true.</returns>
     public async Task<bool> LayerExistsAsync(string layerName, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -512,12 +637,18 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// Renames a layer in both tables in one transaction and records the old name as deleted and the
     /// new one as updated so other sessions refresh. Returns the number of rows renamed.
     /// </summary>
+    /// <param name="oldName">현재 레이어 이름(대소문자 구분 비교, "(no layer)"는 레이어 없는 행).</param>
+    /// <param name="newName">새 레이어 이름. 중복 여부 검사는 호출자가 <see cref="LayerExistsAsync"/>로 해야 한다.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <param name="changeContext">변경자 정보(변경 피드용, null 가능).</param>
+    /// <returns>이름이 바뀐 행 수(피처 + 블록 인스턴스). 0이면 변경 기록을 남기지 않는다.</returns>
     public async Task<int> RenameLayerAsync(
         string oldName, string newName, CancellationToken cancellationToken = default, ChangeContext? changeContext = null)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // 1) 두 테이블의 layer_name을 한 트랜잭션에서 변경(updated_at은 건드리지 않음)
         var renamed = 0;
         foreach (var table in new[] { "spatial_features", "spatial_block_instances" })
         {
@@ -528,6 +659,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             renamed += await command.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        // 2) 이전 이름은 삭제, 새 이름은 갱신으로 기록해 다른 세션이 두 레이어를 모두 새로 읽게 한다
         if (renamed > 0)
         {
             await ChangeFeedRepository.RecordAsync(
@@ -544,6 +676,10 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return renamed;
     }
 
+    /// <summary>해당 원본 파일에서 가져온 데이터(피처 또는 블록 인스턴스)가 이 도면에 이미 있는지 확인한다.</summary>
+    /// <param name="sourceFile">원본 파일 이름/경로(source_file 값).</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>있으면 true.</returns>
     public async Task<bool> HasImportedFileAsync(string sourceFile, CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -562,6 +698,10 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return (bool)(await command.ExecuteScalarAsync(cancellationToken) ?? false);
     }
 
+    /// <summary>특정 원본 파일에서 가져온 데이터를 레이어별로 집계한다(도형 수, 블록 인스턴스 수). 가져오기 검증/감사용.</summary>
+    /// <param name="sourceFile">원본 파일 이름/경로(source_file 값).</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>레이어명 순 목록. 레이어 없는 행은 "(no layer)".</returns>
     public async Task<IReadOnlyList<ImportLayerCount>> FindImportedCountsAsync(
         string sourceFile,
         CancellationToken cancellationToken = default)
@@ -601,6 +741,12 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return counts;
     }
 
+    /// <summary>
+    /// 편집 가능한 레이어 객체(cad_block, dxf_layer 피처)를 모두 읽는다. 각 객체의 updated_at은
+    /// 저장 시 낙관적 동시성 비교(<see cref="ApplyLayerEditsAsync"/>)의 기준값으로 쓰인다.
+    /// </summary>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>id 순 객체 목록.</returns>
     public async Task<IReadOnlyList<EditableLayerObject>> FindEditableLayerObjectsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -641,6 +787,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// <see cref="EditableLayerObject"/>s (tagged <c>block_instance</c>) lets edit mode move/rotate
     /// the real shape and its outline together instead of only the outline.
     /// </summary>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>id 순 객체 목록(FeatureType은 "block_instance", updated_at 포함).</returns>
     public async Task<IReadOnlyList<EditableLayerObject>> FindEditableBlockInstancesAsync(
         CancellationToken cancellationToken = default)
     {
@@ -682,6 +830,13 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// reported back as a conflict instead of being silently overwritten. Non-conflicting
     /// updates/deletes/inserts in the same batch still commit.
     /// </summary>
+    /// <param name="updates">수정 목록: 행 id, 새 도형(Geometry)과 외곽(OuterGeometry; SRID 5186), 편집 진입 시 읽은 updated_at(ExpectedUpdatedAt),
+    /// 블록 인스턴스 여부(true면 spatial_block_instances), 새 attributes(null이면 속성은 갱신하지 않음; 블록 배치 속성 동기화용).</param>
+    /// <param name="inserts">추가 목록: 복제 원본(Source; 종류/블록명/원본파일/레이어/속성)과 새 도형·외곽. Source.FeatureType이 "block_instance"이면 인스턴스 테이블에 추가.</param>
+    /// <param name="deletes">삭제 목록: 행 id, 읽은 시점의 updated_at, 블록 인스턴스 여부.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <param name="changeContext">변경자 정보(변경 피드용, null 가능).</param>
+    /// <returns>충돌한 행 id 목록(다른 세션이 먼저 수정/삭제한 경우). 충돌이 없으면 빈 목록.</returns>
     public async Task<IReadOnlyList<long>> ApplyLayerEditsAsync(
         IReadOnlyList<(long Id, Geometry Geometry, Geometry OuterGeometry, DateTime ExpectedUpdatedAt, bool IsBlockInstance, IReadOnlyDictionary<string, string?>? Attributes)> updates,
         IReadOnlyList<(EditableLayerObject Source, Geometry Geometry, Geometry OuterGeometry)> inserts,
@@ -689,12 +844,14 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         CancellationToken cancellationToken = default,
         ChangeContext? changeContext = null)
     {
+        // 충돌 id와 변경 피드에 기록할 변경 목록을 모은다
         var conflictIds = new List<long>();
         var changes = new List<ChangeEntry>();
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // 1) 수정: updated_at이 읽었을 때 값과 같을 때만 UPDATE(낙관적 동시성). 성공 시 updated_at 갱신
         foreach (var update in updates)
         {
             var table = update.IsBlockInstance ? "spatial_block_instances" : "spatial_features";
@@ -726,6 +883,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             }
         }
 
+        // 2) 추가: 새 행을 INSERT하고 발급된 id를 변경 피드에 기록(object_uid는 DB 기본값으로 새로 발급)
         foreach (var insert in inserts)
         {
             if (insert.Source.FeatureType == "block_instance")
@@ -768,6 +926,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             }
         }
 
+        // 3) 삭제: 수정과 같은 updated_at 가드. 0행이면 이미 다른 세션이 바꾸거나 지운 것이므로 충돌로 보고
         foreach (var delete in deletes)
         {
             var table = delete.IsBlockInstance ? "spatial_block_instances" : "spatial_features";
@@ -786,6 +945,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             }
         }
 
+        // 4) 블록 정의/변환 컬럼 동기화 → 라이브러리 스키마 보장 → 성공한 변경만 변경 피드 기록(NOTIFY) → 커밋
         await SyncBlockDefinitionsAsync(connection, transaction, cancellationToken);
         await LibraryRepository.EnsureSchemaAsync(connection, transaction, cancellationToken);
         await ChangeFeedRepository.RecordAsync(connection, transaction, changeContext, changes, cancellationToken, layoutId);
@@ -793,11 +953,16 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return conflictIds;
     }
 
+    /// <summary>레이어명이 없는(NULL) 객체를 변경 피드에 기록할 때 쓰는 표시 이름.</summary>
     private const string NoLayer = "(no layer)";
 
+    /// <summary>변경 피드의 entity_type 값을 결정한다.</summary>
+    /// <param name="isBlockInstance">블록 인스턴스 테이블의 행이면 true.</param>
+    /// <returns>블록 인스턴스면 <c>ChangeEntityType.BlockInstance</c>, 아니면 <c>ChangeEntityType.Feature</c>.</returns>
     private static string ChangeKind(bool isBlockInstance) =>
         isBlockInstance ? ChangeEntityType.BlockInstance : ChangeEntityType.Feature;
 
+    /// <summary>블록 인스턴스 다중 행 INSERT의 한 배치 크기(행 수). 500행 x 6 파라미터 = 3000개 파라미터로 PostgreSQL 한도(65535) 이내.</summary>
     private const int InstanceBatchSize = 500;
 
     /// <summary>
@@ -808,6 +973,12 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
     /// statements; an exception or cancellation rolls the whole import back so no partial data
     /// is left behind.
     /// </summary>
+    /// <param name="layers">저장할 레이어 행: (블록명, 레이어명(null 가능), 도형, 외곽 도형(SRID 5186), 속성, 피처 종류 'cad_block'/'dxf_layer').</param>
+    /// <param name="instances">저장할 블록 인스턴스: (블록명, 레이어명(null 가능), 도형, 외곽 도형(SRID 5186), 속성).</param>
+    /// <param name="sourceFile">원본 DXF 파일 이름/경로(모든 행의 source_file로 기록; null 불가).</param>
+    /// <param name="progress">진행 보고 수신자(null 가능). 레이어/배치 하나가 끝날 때마다 (단계명, 완료 수, 전체 수) 보고.</param>
+    /// <param name="cancellationToken">취소 토큰. 취소되면 예외가 발생하고 전체가 롤백된다.</param>
+    /// <param name="changeContext">변경자 정보(변경 피드용, null 가능).</param>
     public async Task ImportAsync(
         IReadOnlyList<(string BlockName, string? LayerName, Geometry Geometry, Geometry OuterGeometry, IReadOnlyDictionary<string, string?> Attributes, string FeatureType)> layers,
         IReadOnlyList<(string BlockName, string? LayerName, Geometry Geometry, Geometry OuterGeometry, IReadOnlyDictionary<string, string?> Attributes)> instances,
@@ -816,12 +987,14 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         CancellationToken cancellationToken = default,
         ChangeContext? changeContext = null)
     {
+        // 진행률 분모/분자: 레이어 행 + 블록 인스턴스 전체 건수
         var total = layers.Count + instances.Count;
         var completed = 0;
 
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
+        // 1) 레이어 행을 한 건씩 INSERT(건수가 적음). 매 건마다 취소 확인 후 진행 보고
         foreach (var layer in layers)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -846,6 +1019,7 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             progress?.Report(new ImportProgress("Layers", completed, total));
         }
 
+        // 2) 블록 인스턴스는 500건씩 다중 행 INSERT(파라미터는 행당 6개: 파일, 블록명, 레이어, 속성, 도형, 외곽)
         for (var offset = 0; offset < instances.Count; offset += InstanceBatchSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -870,6 +1044,8 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
             progress?.Report(new ImportProgress("Block instances", completed, total));
         }
 
+        // 3) 변환 컬럼/블록 정의 동기화 → 라이브러리 스키마 보장 → 영향 레이어(대소문자 무시 중복 제거)를
+        //    레이어 전체 INSERT로 변경 피드에 기록(NOTIFY) → 커밋. 중간에 예외/취소가 나면 커밋되지 않아 전체 롤백
         await SyncBlockDefinitionsAsync(connection, transaction, cancellationToken);
         await LibraryRepository.EnsureSchemaAsync(connection, transaction, cancellationToken);
         await ChangeFeedRepository.RecordAsync(
@@ -881,6 +1057,10 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         await transaction.CommitAsync(cancellationToken);
     }
 
+    /// <summary>블록 인스턴스 다중 행 INSERT SQL을 만든다. 행당 위치 파라미터 6개($1~$6, $7~$12, ...)와 layout_id 리터럴을 쓴다.</summary>
+    /// <param name="rowCount">한 문장에 넣을 행 수(1 이상, <see cref="InstanceBatchSize"/> 이하).</param>
+    /// <param name="layoutId">모든 행에 기록할 도면 ID(숫자 리터럴로 삽입).</param>
+    /// <returns>"INSERT INTO spatial_block_instances (...) VALUES (...), (...);" 문자열.</returns>
     private static string BuildInstanceBatchInsertSql(int rowCount, long layoutId)
     {
         var sql = new StringBuilder(
@@ -900,5 +1080,6 @@ public sealed class PostGisFeatureRepository : IAsyncDisposable
         return sql.ToString();
     }
 
+    /// <summary>내부 데이터 소스(연결 풀)를 해제한다.</summary>
     public ValueTask DisposeAsync() => dataSource.DisposeAsync();
 }

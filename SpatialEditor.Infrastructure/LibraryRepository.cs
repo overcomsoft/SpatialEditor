@@ -1,3 +1,26 @@
+// ============================================================================
+// LibraryRepository.cs : 전역 설비 블록 라이브러리 저장소 (PostgreSQL + PostGIS, Npgsql)
+//
+// [사용 테이블]
+//   block_categories          분류 트리(parent_id 자기참조, (부모, 이름) 고유)
+//   block_library             라이브러리 항목(code 고유, 상태, 현재 버전 번호, is_deleted 소프트 삭제)
+//   block_library_versions    항목의 버전별 로컬 좌표 지오메트리 + shape_hash(형상 중복 판정용)
+//   block_ports               버전별 포트(연결점) - 이 파일에서는 테이블만 생성
+//   spatial_block_instances   도면에 배치된 블록 인스턴스(library_id 컬럼을 여기서 추가/연결)
+//   block_definitions         DXF 가져오기 때 생긴 블록 정의(최초 이관의 원본)
+//
+// [흐름]
+//   EnsureSchemaAsync : 테이블/인덱스 생성 -> 기본 분류('미분류') 시드(빈 트리일 때만)
+//        -> block_definitions 를 블록 이름당 1개 라이브러리 항목(+버전 1)으로 이관(형상 해시로 중복 제외)
+//        -> 인스턴스를 (1) 같은 형상 (2) 같은 블록 이름 순으로 라이브러리에 연결.  여러 번 실행해도 안전(멱등)
+//   조회/편집 : ListCategories/AddCategory/RenameCategory, ListItems, UpdateItem(카탈로그 필드만), DeleteItem(소프트 삭제)
+//   RegisterFromInstanceAsync : 도면에 배치된 인스턴스의 모양을 블록 자신의 좌표계로 되돌려
+//        형상 해시 계산 -> 같은 형상이 있으면 기존 항목에 연결, 없으면 새 항목 + 버전 1 생성
+//        -> 같은 정의를 쓰는 다른 인스턴스도 모두 연결.  (전부 한 트랜잭션)
+//
+// 형상 해시: 좌표를 1mm(0.001) 격자로 스냅한 WKT 의 md5. 1mm 이내 차이는 같은 블록으로 취급한다.
+// 도메인 모델은 SpatialEditor.Domain/Library.cs 참고.
+// ============================================================================
 using NetTopologySuite.Geometries;
 using Npgsql;
 using NpgsqlTypes;
@@ -6,18 +29,24 @@ using SpatialEditor.Domain;
 namespace SpatialEditor.Infrastructure;
 
 /// <summary>
-/// Global equipment block library: classification tree, library items with versioned local-space
-/// geometry, and the link from placed block instances to their library item.
+/// 전역 설비 블록 라이브러리 저장소입니다: 분류 트리, 버전별 로컬 좌표 지오메트리를 가진 라이브러리 항목,
+/// 그리고 도면에 배치된 블록 인스턴스와 라이브러리 항목 사이의 연결을 다룹니다.
+/// 사용이 끝나면 <see cref="DisposeAsync"/> 로 연결 풀을 해제해야 합니다.
 /// </summary>
 public sealed class LibraryRepository : IAsyncDisposable
 {
+    /// <summary>기본 분류 이름. 분류 트리가 비어 있을 때 최상위 분류로 한 번 시드됩니다.</summary>
     public const string UncategorizedName = "미분류";
 
-    // Geometry hash tolerance (metres): shapes equal to the millimetre count as the same block.
+    // 형상 해시 SQL 템플릿입니다. {0} 자리에 지오메트리 식을 넣습니다.
+    // 좌표를 0.001(미터, 즉 1mm) 격자에 맞춘 뒤 WKT 의 md5 를 구하므로, 1mm 이내 차이는 같은 블록으로 판정됩니다.
     private const string HashOf = "md5(ST_AsText(ST_SnapToGrid({0}, 0.001)))";
 
+    /// <summary>연결 풀을 관리하는 Npgsql 데이터 소스(NetTopologySuite 형식 매핑 사용).</summary>
     private readonly NpgsqlDataSource dataSource;
 
+    /// <summary>저장소를 만들고 NetTopologySuite 매핑이 켜진 연결 풀을 준비합니다(이 시점에는 DB 에 접속하지 않습니다).</summary>
+    /// <param name="connectionString">PostgreSQL 연결 문자열. null/빈 값이면 안 됩니다.</param>
     public LibraryRepository(string connectionString)
     {
         var builder = new NpgsqlDataSourceBuilder(connectionString);
@@ -25,23 +54,41 @@ public sealed class LibraryRepository : IAsyncDisposable
         dataSource = builder.Build();
     }
 
+    /// <summary>연결 풀을 해제합니다.</summary>
+    /// <returns>해제 작업을 나타내는 ValueTask.</returns>
     public ValueTask DisposeAsync() => dataSource.DisposeAsync();
 
     /// <summary>
-    /// Creates the library tables and migrates existing <c>block_definitions</c> into library items
-    /// (one per block name, shape-hash de-duplicated) and links instances to them. Idempotent.
+    /// 라이브러리 테이블을 만들고, 기존 <c>block_definitions</c> 를 라이브러리 항목으로 이관합니다
+    /// (블록 이름당 1개, 형상 해시로 중복 제거). 이어서 배치된 인스턴스를 항목에 연결합니다. 여러 번 실행해도 안전(멱등)합니다.
     /// </summary>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <returns>작업 완료를 나타내는 Task.</returns>
     public async Task EnsureSchemaAsync(CancellationToken cancellationToken = default)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await EnsureSchemaAsync(connection, null, cancellationToken);
     }
 
+    /// <summary>
+    /// 스키마 생성과 이관을 실제로 수행하는 내부 구현입니다. 다른 저장소가 자신의 트랜잭션 안에서
+    /// 함께 호출할 수 있도록 연결/트랜잭션을 외부에서 받습니다.
+    /// </summary>
+    /// <param name="connection">열린 연결.</param>
+    /// <param name="transaction">소속 트랜잭션. 트랜잭션 없이 실행하려면 null.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
+    /// <returns>작업 완료를 나타내는 Task.</returns>
     internal static async Task EnsureSchemaAsync(
         NpgsqlConnection connection, NpgsqlTransaction? transaction, CancellationToken cancellationToken)
     {
+        // 1) 형상 해시 식을 SQL 에 끼워 넣을 수 있게 미리 문자열로 만듭니다.
+        //    (후보 = 이관 대상 정의 s, 정의 = 인스턴스가 가리키는 정의 d)
         var hashOfDefinition = string.Format(HashOf, "d.local_geom");
         var hashOfCandidate = string.Format(HashOf, "s.local_geom");
+        // 2) 하나의 SQL 배치로 다음을 순서대로 수행합니다(모두 IF NOT EXISTS/WHERE NOT EXISTS 라 멱등).
+        //    a) 테이블/인덱스 생성  b) 기본 분류 시드(빈 트리일 때만)
+        //    c) block_definitions 를 블록 이름당 1개 항목 + 버전 1 로 이관(같은 code 이거나 같은 형상이면 건너뜀)
+        //    d) 인스턴스 연결: 먼저 형상이 같은 항목, 그다음 블록 이름이 코드와 같은 항목
         var sql = $"""
             CREATE TABLE IF NOT EXISTS block_categories (
                 id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -147,10 +194,14 @@ public sealed class LibraryRepository : IAsyncDisposable
             WHERE i.library_id IS NULL AND l.is_deleted = FALSE AND l.code = i.block_name;
             """;
 
+        // 3) 위 배치를 실행합니다.
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>모든 분류를 이름순으로 조회합니다. 트리 구성은 호출자가 ParentId 로 합니다.</summary>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <returns>평면 분류 목록.</returns>
     public async Task<IReadOnlyList<BlockCategory>> ListCategoriesAsync(CancellationToken cancellationToken = default)
     {
         await using var command = dataSource.CreateCommand("SELECT id, parent_id, name FROM block_categories ORDER BY name;");
@@ -164,6 +215,12 @@ public sealed class LibraryRepository : IAsyncDisposable
         return result;
     }
 
+    /// <summary>분류를 추가합니다.</summary>
+    /// <param name="parentId">상위 분류 id. 최상위로 만들려면 null.</param>
+    /// <param name="name">분류 이름(앞뒤 공백 제거). 비어 있으면 안 됩니다.</param>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <returns>새 분류의 id.</returns>
+    /// <exception cref="InvalidOperationException">이름이 비었거나 같은 위치에 같은 이름이 이미 있을 때.</exception>
     public async Task<long> AddCategoryAsync(long? parentId, string name, CancellationToken cancellationToken = default)
     {
         name = name.Trim();
@@ -176,6 +233,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             "INSERT INTO block_categories (parent_id, name) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING id;");
         command.Parameters.Add(new NpgsqlParameter { Value = (object?)parentId ?? DBNull.Value, NpgsqlDbType = NpgsqlDbType.Bigint });
         command.Parameters.AddWithValue(name);
+        // ON CONFLICT DO NOTHING 이라 같은 부모 아래 같은 이름이면 삽입이 무시되어 id 가 돌아오지 않습니다. 이것으로 중복을 감지합니다.
         var id = await command.ExecuteScalarAsync(cancellationToken);
         if (id is null)
         {
@@ -185,6 +243,11 @@ public sealed class LibraryRepository : IAsyncDisposable
         return (long)id;
     }
 
+    /// <summary>분류 이름을 바꿉니다.</summary>
+    /// <param name="id">대상 분류 id.</param>
+    /// <param name="name">새 이름(앞뒤 공백 제거). 비어 있으면 안 됩니다.</param>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <exception cref="InvalidOperationException">이름이 비었음, 분류가 없음, 같은 단계에 같은 이름이 이미 있음.</exception>
     public async Task RenameCategoryAsync(long id, string name, CancellationToken cancellationToken = default)
     {
         name = name.Trim();
@@ -203,12 +266,19 @@ public sealed class LibraryRepository : IAsyncDisposable
                 throw new InvalidOperationException("The category no longer exists.");
             }
         }
+        // (부모, 이름) 고유 인덱스 위반을 사용자용 메시지로 바꿉니다.
         catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
         {
             throw new InvalidOperationException($"A category named '{name}' already exists at this level.");
         }
     }
 
+    /// <summary>
+    /// 삭제되지 않은 모든 라이브러리 항목을 코드 순으로 조회합니다. 분류 이름, 배치된 인스턴스 수,
+    /// 현재 버전의 로컬 지오메트리를 함께 가져옵니다.
+    /// </summary>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <returns>라이브러리 항목 목록.</returns>
     public async Task<IReadOnlyList<LibraryItem>> ListItemsAsync(CancellationToken cancellationToken = default)
     {
         const string sql = """
@@ -252,14 +322,24 @@ public sealed class LibraryRepository : IAsyncDisposable
     }
 
     /// <summary>
-    /// Registers the shape of a placed block instance as a new library item (version 1) and links
-    /// the instance to it. When the library already holds the same shape, the instance is linked
-    /// to that item instead of creating a duplicate.
+    /// 도면에 배치된 블록 인스턴스의 형상을 새 라이브러리 항목(버전 1)으로 등록하고 그 인스턴스를 연결합니다.
+    /// 라이브러리에 같은 형상이 이미 있으면 새로 만들지 않고 그 항목에 인스턴스를 연결합니다.
     /// </summary>
+    /// <param name="instanceId">등록할 블록 인스턴스(spatial_block_instances)의 id.</param>
+    /// <param name="code">새 항목 코드. 공백 제거 후 비어 있으면 안 되고 기존 코드와 겹치면 안 됩니다.</param>
+    /// <param name="name">새 항목 표시 이름. 공백 제거 후 비어 있으면 안 됩니다.</param>
+    /// <param name="categoryId">분류 id. null 이면 최상위 첫 분류(기본 분류)로 들어갑니다.</param>
+    /// <param name="vendor">제조사. 비어 있거나 공백이면 null 로 저장.</param>
+    /// <param name="modelNo">모델 번호. 비어 있거나 공백이면 null 로 저장.</param>
+    /// <param name="userId">작업한 사용자 id(생성자/수정자 기록). 알 수 없으면 null.</param>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <returns>새로 만들었는지(Created) 기존 항목에 연결했는지(LinkedToExisting)와 항목 id/코드.</returns>
+    /// <exception cref="InvalidOperationException">필수값 누락, 인스턴스 없음/배치 정보 없음, 이미 연결됨, 코드 중복.</exception>
     public async Task<LibraryRegisterResult> RegisterFromInstanceAsync(
         long instanceId, string code, string name, long? categoryId, string? vendor, string? modelNo,
         long? userId, CancellationToken cancellationToken = default)
     {
+        // 1) 입력 정리: 앞뒤 공백을 제거하고 코드/이름이 비어 있으면 거부합니다.
         code = code.Trim();
         name = name.Trim();
         if (code.Length == 0 || name.Length == 0)
@@ -270,16 +350,19 @@ public sealed class LibraryRepository : IAsyncDisposable
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-        // The instance's geometry in the block's own coordinate system: the inverse of its
-        // translate/rotate/scale transform (same maths as the definition sync).
+        // 2) 인스턴스의 지오메트리를 블록 자신의 좌표계(삽입점이 원점, 회전/배율 없음)로 되돌리는 SQL 식입니다.
+        //    배치 시 적용된 이동/회전/배율 변환의 역변환이며, 정의 동기화와 같은 수식입니다.
         const string localGeom = """
             ST_Affine(ST_Translate({0}, -insert_x, -insert_y),
                 cos(radians(rotation_deg)) / scale_x, sin(radians(rotation_deg)) / scale_x,
                 -sin(radians(rotation_deg)) / scale_y, cos(radians(rotation_deg)) / scale_y, 0, 0)
             """;
+        // 실제 도형(geom)과 외곽(outer_geom) 각각에 같은 역변환 식을 적용합니다.
         var geomExpr = string.Format(localGeom, "geom");
         var outerExpr = string.Format(localGeom, "outer_geom");
 
+        // 3) 프로브 쿼리: 이미 연결된 라이브러리 id, 로컬 형상 해시, 외곽 상자의 가로(width)/세로(depth)를 한 번에 구합니다.
+        //    삽입점이 없거나 배율이 0 인 인스턴스는 역변환이 불가능하므로 조회에서 제외되어 "배치 정보 없음" 오류가 됩니다.
         long? existingLibraryId;
         string? shapeHash;
         double width, depth;
@@ -304,6 +387,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             depth = reader.GetDouble(3);
         }
 
+        // 4) 이미 라이브러리 항목에 연결된 인스턴스는 다시 등록하지 않습니다(어느 항목인지 알려줌).
         if (existingLibraryId is not null)
         {
             await using var named = new NpgsqlCommand("SELECT code FROM block_library WHERE id = $1;", connection, transaction);
@@ -312,6 +396,8 @@ public sealed class LibraryRepository : IAsyncDisposable
             throw new InvalidOperationException($"This block is already linked to library item '{existingCode}'.");
         }
 
+        // 5) 중복 감지: 같은 형상 해시를 현재 버전으로 가진(삭제되지 않은) 항목이 있으면
+        //    새로 만들지 않고 그 항목에 인스턴스만 연결한 뒤 커밋하고 끝냅니다.
         await using (var duplicate = new NpgsqlCommand("""
             SELECT l.id, l.code FROM block_library_versions v
             JOIN block_library l ON l.id = v.library_id AND l.is_deleted = FALSE AND v.version = l.current_version
@@ -331,6 +417,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             }
         }
 
+        // 6) 새 항목을 만들기 전에 코드 중복을 확인합니다(삭제된 항목의 코드도 포함하여 UNIQUE 위반을 피함).
         await using (var codeCheck = new NpgsqlCommand("SELECT EXISTS (SELECT 1 FROM block_library WHERE code = $1);", connection, transaction))
         {
             codeCheck.Parameters.AddWithValue(code);
@@ -340,6 +427,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             }
         }
 
+        // 7) 라이브러리 항목 삽입: 분류가 없으면 최상위 첫 분류를 사용하고, 크기(width/depth)는 3)에서 구한 값을 씁니다.
         long libraryId;
         await using (var insertItem = new NpgsqlCommand("""
             INSERT INTO block_library (code, name, category_id, vendor, model_no, width, depth, status, created_by, updated_by)
@@ -359,6 +447,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             libraryId = (long)(await insertItem.ExecuteScalarAsync(cancellationToken))!;
         }
 
+        // 8) 버전 1 삽입: 3)과 같은 역변환 식으로 로컬 지오메트리를 만들어 저장하고 형상 해시를 함께 기록합니다.
         await using (var insertVersion = new NpgsqlCommand($"""
             INSERT INTO block_library_versions (library_id, version, local_geom, local_outer_geom, shape_hash, note, created_by)
             SELECT $1, 1, {geomExpr}, {outerExpr}, $2, 'Registered from a placed block', $3
@@ -372,7 +461,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             await insertVersion.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        // Every instance that shares the source definition is the same block: link them all.
+        // 9) 원본 정의를 공유하는 인스턴스는 모두 같은 블록이므로, 아직 연결되지 않은 것들을 한꺼번에 연결합니다.
         await using (var linkAll = new NpgsqlCommand("""
             UPDATE spatial_block_instances SET library_id = $1
             WHERE library_id IS NULL
@@ -389,6 +478,12 @@ public sealed class LibraryRepository : IAsyncDisposable
         return new LibraryRegisterResult(LibraryRegisterOutcome.Created, libraryId, code);
     }
 
+    /// <summary>블록 인스턴스 하나를 라이브러리 항목에 연결합니다(library_id 설정).</summary>
+    /// <param name="connection">열린 연결.</param>
+    /// <param name="transaction">소속 트랜잭션.</param>
+    /// <param name="instanceId">연결할 인스턴스 id.</param>
+    /// <param name="libraryId">연결 대상 라이브러리 항목 id.</param>
+    /// <param name="cancellationToken">취소 토큰.</param>
     private static async Task LinkInstanceAsync(
         NpgsqlConnection connection, NpgsqlTransaction transaction, long instanceId, long libraryId, CancellationToken cancellationToken)
     {
@@ -399,6 +494,12 @@ public sealed class LibraryRepository : IAsyncDisposable
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>라이브러리 항목의 카탈로그 필드(이름, 분류, 제조사, 모델, 설명, 높이, 상태)를 수정합니다. 지오메트리는 바뀌지 않습니다.</summary>
+    /// <param name="id">수정할 항목 id.</param>
+    /// <param name="edit">새 값 묶음. 이름은 필수이고 상태는 <see cref="LibraryStatus.All"/> 중 하나여야 합니다.</param>
+    /// <param name="userId">수정한 사용자 id. 알 수 없으면 null.</param>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <exception cref="InvalidOperationException">이름 누락, 알 수 없는 상태, 항목이 없거나 삭제됨.</exception>
     public async Task UpdateItemAsync(long id, LibraryItemEdit edit, long? userId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(edit.Name))
@@ -406,6 +507,7 @@ public sealed class LibraryRepository : IAsyncDisposable
             throw new InvalidOperationException("Enter a name.");
         }
 
+        // 상태 문자열은 DB 에 그대로 저장되므로 허용된 값인지 먼저 검사합니다.
         if (!LibraryStatus.All.Contains(edit.Status))
         {
             throw new InvalidOperationException($"Unknown status '{edit.Status}'.");
@@ -431,12 +533,20 @@ public sealed class LibraryRepository : IAsyncDisposable
         }
     }
 
-    /// <summary>Soft-deletes an item. Items still used by placed blocks cannot be deleted (deprecate them instead).</summary>
+    /// <summary>
+    /// 라이브러리 항목을 소프트 삭제(is_deleted=TRUE)합니다. 배치된 블록이 아직 사용 중인 항목은 삭제할 수 없으며
+    /// 대신 상태를 '사용 중단(deprecated)'으로 바꿔야 합니다.
+    /// </summary>
+    /// <param name="id">삭제할 항목 id.</param>
+    /// <param name="userId">삭제한 사용자 id. 알 수 없으면 null.</param>
+    /// <param name="cancellationToken">작업 취소 토큰. 기본값은 취소 불가(default).</param>
+    /// <exception cref="InvalidOperationException">도면에서 아직 사용 중일 때.</exception>
     public async Task DeleteItemAsync(long id, long? userId, CancellationToken cancellationToken = default)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         await using var usage = new NpgsqlCommand("SELECT count(*) FROM spatial_block_instances WHERE library_id = $1;", connection);
         usage.Parameters.AddWithValue(id);
+        // 사용 중인 인스턴스 수를 확인해, 있으면 삭제를 거부합니다(도면의 참조가 끊어지는 것을 방지).
         var used = (long)(await usage.ExecuteScalarAsync(cancellationToken))!;
         if (used > 0)
         {
@@ -451,5 +561,8 @@ public sealed class LibraryRepository : IAsyncDisposable
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>빈 문자열/공백뿐인 값은 null 로, 그 외에는 앞뒤 공백을 제거해 돌려줍니다(DB 에 빈 문자열 대신 NULL 저장).</summary>
+    /// <param name="value">입력 문자열(null 가능).</param>
+    /// <returns>정리된 문자열 또는 null.</returns>
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }
